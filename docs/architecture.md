@@ -9,9 +9,9 @@ el agente Windows. Notion recibe una copia unilateral: nunca vuelve a escribir
 el snapshot que se imprimió.
 
 ```text
-PWA Next.js ───────┐
-                   ├─> API Cloud Run ─> Firestore
-ChatGPT -> MCP ────┘         │              │
+PWA Next.js ─────────────┐
+ChatGPT -> MCP ──────────┼─> API Cloud Run ─> Firestore
+Alexa -> adaptador Alexa ┘         │              │
                              │              ├─> Pub/Sub -> Notion worker
                              │              └─> Pub/Sub -> render service
                              │                               │
@@ -70,6 +70,9 @@ autenticación de usuario también falla cerrada fuera del modo local.
 - El worker de Notion crea una página una sola vez y completa el redirect; no
   escucha ediciones de Notion.
 - El MCP remoto aplica OAuth y scopes mínimos sobre las mismas operaciones.
+- La Custom Skill doméstica usa un adaptador Cloud Run público y aislado que
+  verifica las peticiones de Alexa antes de invocar la API con identidad de
+  servicio; consulta `docs/alexa-integration.md`.
 - GitHub es la fuente; Cloud Build ejecuta tests, crea imágenes en Artifact
   Registry y despliega servicios de Cloud Run desde `main`.
 - Secret Manager contiene credenciales. No se admiten claves JSON en GitHub.

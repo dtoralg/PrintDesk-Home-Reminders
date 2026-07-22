@@ -6,4 +6,8 @@ export default defineConfig({
   outDir: "dist",
   splitting: false,
   noExternal: [/@printdesk\/backend/, /@printdesk\/shared-models/],
+  external: [
+    /^@google-cloud\//,
+    /^firebase-admin(?:\/|$)/,
+  ],
 });

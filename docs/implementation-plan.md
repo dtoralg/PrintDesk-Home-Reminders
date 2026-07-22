@@ -49,3 +49,15 @@ desde la consola siguiendo `docs/gcp-console-setup.md`.
 - Terraform para IAM, servicios, datos, secretos y budgets.
 - Cloud Build desde GitHub a Artifact Registry y Cloud Run.
 - Build versionado del agente Windows; sin autoactualización en el MVP.
+
+## Milestone 7 — Alexa doméstica
+
+- Custom Skill `es-ES` privada y permanentemente en modo Development.
+- Adaptador Cloud Run aislado con verificación criptográfica de Alexa.
+- Allowlist de aplicación, usuario y dispositivos Echo domésticos.
+- Texto libre con `AMAZON.SearchQuery` y estructuración mediante Vertex AI.
+- Confirmación verbal configurable e idempotencia basada en `requestId`.
+- Creación restringida a `source: alexa` y `printerId: home`.
+
+El diseño completo y sus criterios de aceptación están en
+`docs/alexa-integration.md`.
