@@ -1,0 +1,11 @@
+.git
+.github
+.local-data
+.pnpm-store
+.venv
+node_modules
+**/node_modules
+**/.next
+**/dist
+coverage
+*.log

@@ -1,5 +1,6 @@
 FROM node:24-slim AS build
 WORKDIR /app
+ENV CI=true
 COPY . .
 RUN corepack enable && pnpm install --frozen-lockfile && pnpm --filter @printdesk/api build
 
