@@ -1,0 +1,33 @@
+:root { --paper:#f1efe7; --ink:#11110f; --muted:#67675f; --line:#aaa89e; --panel:#e5e2d8; }
+* { box-sizing: border-box; }
+html { background:var(--paper); color:var(--ink); }
+body { margin:0; font-family:Arial, Helvetica, sans-serif; }
+a { color:inherit; text-decoration:none; }
+button,input,textarea { font:inherit; }
+.shell { min-height:100vh; padding:0 40px 64px; }
+.topbar { min-height:72px; display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid var(--ink); }
+.brand { font-family:"Courier New",monospace; font-weight:900; letter-spacing:-.07em; font-size:22px; }
+.brand span { animation:blink 1s steps(1) infinite; }
+.system-state,.eyebrow,.field-label,legend,.preview-heading,.job-state { font:12px "Courier New",monospace; letter-spacing:.08em; }
+.system-state { margin:0; }.dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--ink); margin-right:8px; }
+.hero { max-width:900px; padding:64px 0 48px; }
+.hero h1 { font-size:clamp(52px,8vw,96px); line-height:.9; letter-spacing:-.075em; margin:18px 0 24px; }
+.hero > p:last-child { max-width:560px; color:var(--muted); line-height:1.5; }
+.composer-grid { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(340px,.8fr); gap:24px; align-items:start; }
+.composer-card,.preview-panel { border:2px solid var(--ink); background:rgba(255,255,255,.18); padding:28px; }
+.field-label { display:flex; gap:14px; margin:20px 0 8px; }.field-label:first-child { margin-top:0; }.field-label span,legend span { color:var(--muted); }
+input[type="text"],input:not([type]),textarea { width:100%; border:0; border-bottom:2px solid var(--ink); background:transparent; padding:12px 0; outline:none; }
+#title { font-size:28px; } textarea { resize:vertical; line-height:1.45; }
+fieldset { border:0; padding:28px 0 20px; margin:0; } legend { margin-bottom:12px; }
+.type-picker { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+.type-picker button { background:transparent; border:1px solid var(--line); padding:13px 6px; cursor:pointer; }.type-picker button.selected { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+.check { display:flex; align-items:center; gap:10px; font-size:14px; }.check input { width:18px; height:18px; accent-color:var(--ink); }
+.primary-action { width:100%; display:flex; justify-content:space-between; border:0; background:var(--ink); color:var(--paper); margin-top:24px; padding:18px 20px; font-weight:700; cursor:pointer; }.primary-action:disabled { opacity:.35; cursor:not-allowed; }
+.error { border:1px solid var(--ink); padding:12px; }.job-state { margin-top:18px; border-top:1px dashed var(--ink); padding-top:14px; }
+.preview-panel { background:var(--panel); }.preview-heading { display:flex; justify-content:space-between; margin-bottom:18px; }
+.paper-ticket,.rendered-ticket { display:block; width:min(100%,360px); margin:auto; background:white; box-shadow:0 10px 22px rgba(0,0,0,.09); }
+.paper-ticket { min-height:520px; padding:26px 24px; text-align:center; }.rendered-ticket { height:auto; image-rendering:pixelated; }
+.ticket-kind { background:var(--ink); color:white; font:700 18px "Courier New",monospace; padding:10px; letter-spacing:.14em; }.ticket-star { font-size:30px; }.paper-ticket h2 { font-size:34px; line-height:1; text-transform:uppercase; overflow-wrap:anywhere; }.ticket-rule { border-top:2px dashed var(--ink); margin:24px 0; }.paper-ticket > p:not(.ticket-star) { font:14px/1.5 "Courier New",monospace; }.paper-ticket small { display:block; margin-top:90px; font:10px "Courier New",monospace; letter-spacing:.1em; }
+@keyframes blink { 50% { opacity:0; } }
+@media (max-width:760px) { .shell{padding:0 16px 48px}.topbar{min-height:60px}.system-state{font-size:9px}.hero{padding:42px 0 32px}.hero h1{font-size:52px}.composer-grid{grid-template-columns:1fr}.composer-card,.preview-panel{padding:20px}.type-picker{grid-template-columns:repeat(2,1fr)}.preview-panel{order:-1}.paper-ticket{min-height:300px}.paper-ticket small{margin-top:36px} }
+@media (prefers-reduced-motion:reduce) { .brand span { animation:none; } }

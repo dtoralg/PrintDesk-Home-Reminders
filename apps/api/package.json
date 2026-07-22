@@ -1,0 +1,28 @@
+{
+  "name": "@printdesk/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsup src/main.ts --format esm --out-dir dist --no-splitting",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --exclude tests/e2e.test.ts",
+    "test:e2e": "vitest run tests/e2e.test.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.0.0",
+    "@printdesk/shared-models": "workspace:*",
+    "fastify": "^5.4.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@printdesk/windows-print-agent": "workspace:*",
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

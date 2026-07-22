@@ -1,0 +1,45 @@
+# Plan de implementación
+
+## Milestone 1 — recorrido vertical local (implementado)
+
+- PWA App Router monocroma, responsive e instalable.
+- Contrato estricto compartido para los cuatro tipos de ticket.
+- API HTTP con autenticación local explícita y fallo cerrado por defecto.
+- Store local sustituible, renderer Pillow 576 px/1-bit, QR y ESC/POS.
+- Agente dry-run que reclama, descarga, persiste y completa un job.
+- Pruebas de contratos, renderer y recorrido E2E real.
+
+Criterio: `pnpm test:e2e` termina el trabajo en `printed_simulated` y conserva
+una copia no vacía del ESC/POS descargado.
+
+## Milestone 2 — persistencia y eventos Google Cloud
+
+- Interfaces de repositorio y bus con adaptadores Firestore/Pub/Sub.
+- Cloud Storage privado y URLs firmadas breves.
+- Render service idempotente y estados con precondiciones/transacciones.
+- Emuladores y test de reentrega del evento.
+
+## Milestone 3 — identidad y experiencia
+
+- Firebase Auth con Google y allowlist `authorized_users/{uid}`.
+- Sesión PWA, historial, detalle y seguimiento autenticado.
+- Health check bajo demanda con TTL de dos minutos.
+
+## Milestone 4 — impresora y agente
+
+- Suscripción StreamingPull, lease idempotente y cola persistente.
+- Transporte TCP 9100 con timeout y reintentos acotados.
+- Prueba física de raster, caracteres, QR, avance y corte.
+
+## Milestone 5 — Vertex AI y Notion
+
+- Interpretación estructurada y editable del modo simple.
+- Evaluaciones de fechas relativas y fallback al modo avanzado.
+- Worker unilateral de Notion y redirect interno seguro.
+
+## Milestone 6 — MCP, infraestructura y entrega
+
+- MCP remoto con OAuth, confirmaciones y auditoría `source: mcp`.
+- Terraform para IAM, servicios, datos, secretos y budgets.
+- Cloud Build desde GitHub a Artifact Registry y Cloud Run.
+- Build versionado del agente Windows; sin autoactualización en el MVP.

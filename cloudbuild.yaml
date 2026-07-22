@@ -1,0 +1,21 @@
+steps:
+  - name: node:24-slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        apt-get update
+        apt-get install -y --no-install-recommends python3 python3-venv
+        python3 -m venv /tmp/printdesk-venv
+        /tmp/printdesk-venv/bin/pip install --requirement packages/ticket-renderer/requirements.txt
+        export PRINTDESK_PYTHON=/tmp/printdesk-venv/bin/python
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm typecheck
+        pnpm test
+        pnpm test:e2e
+        pnpm build
+        /tmp/printdesk-venv/bin/python -m unittest discover -s packages/ticket-renderer/tests
+
+options:
+  logging: CLOUD_LOGGING_ONLY

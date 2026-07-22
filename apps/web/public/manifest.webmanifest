@@ -1,0 +1,11 @@
+{
+  "name": "PrintDesk",
+  "short_name": "PrintDesk",
+  "description": "Recordatorios físicos desde cualquier lugar",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f1efe7",
+  "theme_color": "#11110f",
+  "lang": "es",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
