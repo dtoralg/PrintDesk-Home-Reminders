@@ -6,6 +6,8 @@
   "exports": "./src/index.ts",
   "scripts": {
     "dev": "tsx src/cli.ts",
+    "print:tcp": "tsx src/tcp-cli.ts",
+    "virtual-printer": "tsx src/virtual-printer-cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },

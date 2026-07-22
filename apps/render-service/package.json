@@ -1,5 +1,5 @@
 {
-  "name": "@printdesk/api",
+  "name": "@printdesk/render-service",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,18 +8,14 @@
     "build": "tsup --config tsup.config.ts",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --exclude tests/e2e.test.ts",
-    "test:e2e": "vitest run tests/e2e.test.ts"
+    "test": "vitest run"
   },
   "dependencies": {
-    "@fastify/cors": "^11.0.0",
     "@printdesk/backend": "workspace:*",
     "@printdesk/shared-models": "workspace:*",
-    "fastify": "^5.4.0",
-    "zod": "^4.0.0"
+    "fastify": "^5.4.0"
   },
   "devDependencies": {
-    "@printdesk/windows-print-agent": "workspace:*",
     "@types/node": "^24.0.0",
     "tsx": "^4.20.0",
     "tsup": "^8.5.0",

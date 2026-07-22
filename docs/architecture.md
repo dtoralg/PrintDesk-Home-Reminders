@@ -52,13 +52,18 @@ rendering -> queued -> claimed -> checking_printer -> printing -> printed
 `printed` solo significa que el agente entregó todos los bytes sin error; no
 afirma que el papel saliera salvo que una impresora soporte confirmación fiable.
 
-## Adaptadores del milestone 1
+## Adaptadores y eventos
 
-El recorrido local usa un store de archivos y llama al renderer como subproceso.
-Ambos son adaptadores deliberadamente locales, no equivalentes productivos de
-Firestore, Pub/Sub o Cloud Storage. Los endpoints de claim/artefacto se cierran
-fuera de `PRINTDESK_ALLOW_DEV_AUTH=true` hasta incorporar identidad de dispositivo.
-La autenticación también falla cerrada fuera del modo local.
+El recorrido rápido local conserva adaptadores de archivos y ejecuta el worker
+en el mismo proceso. El backend `gcp` usa Firestore, Pub/Sub y Cloud Storage con
+las mismas interfaces. El API guarda request, job y comando idempotente en una
+transacción; `render-service` recibe `request.created` mediante push autenticado,
+toma un lease de cinco minutos y publica objetos inmutables. Una reentrega ve el
+job en `queued` y se confirma sin volver a renderizar.
+
+Los endpoints de claim/artefacto se cierran fuera de
+`PRINTDESK_ALLOW_DEV_AUTH=true` hasta incorporar identidad de dispositivo. La
+autenticación de usuario también falla cerrada fuera del modo local.
 
 ## Integraciones posteriores
 

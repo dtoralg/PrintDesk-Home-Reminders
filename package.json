@@ -6,9 +6,13 @@
   "scripts": {
     "build": "pnpm -r --if-present build",
     "dev:api": "pnpm --filter @printdesk/api dev",
+    "dev:render": "pnpm --filter @printdesk/render-service dev",
     "dev:web": "pnpm --filter @printdesk/web dev",
     "test": "pnpm -r --if-present test",
     "test:e2e": "pnpm --filter @printdesk/api test:e2e",
+    "test:printer": "pnpm --filter @printdesk/windows-print-agent test && pnpm test:e2e",
+    "test:emulators": "pnpm --filter @printdesk/backend test:emulators",
+    "virtual-printer": "pnpm --filter @printdesk/windows-print-agent virtual-printer",
     "typecheck": "pnpm -r --if-present typecheck"
   }
 }

@@ -17,5 +17,31 @@ steps:
         pnpm build
         /tmp/printdesk-venv/bin/python -m unittest discover -s packages/ticket-renderer/tests
 
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file=apps/api/Dockerfile
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-api:$SHORT_SHA
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-api:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file=apps/render-service/Dockerfile
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-render:$SHORT_SHA
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-render:latest
+      - .
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-api:$SHORT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-api:latest
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-render:$SHORT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-render:latest
+
+substitutions:
+  _REGION: europe-southwest1
+  _AR_REPOSITORY: printdesk
+
 options:
   logging: CLOUD_LOGGING_ONLY

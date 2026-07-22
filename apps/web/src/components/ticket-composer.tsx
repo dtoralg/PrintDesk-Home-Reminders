@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { CreateRequestResult, PrintJobView, RequestType } from "@printdesk/shared-models";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
@@ -19,6 +19,7 @@ export function TicketComposer() {
   const [job, setJob] = useState<PrintJobView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const idempotencyKey = useRef<string | null>(null);
 
   useEffect(() => {
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js");
@@ -38,13 +39,15 @@ export function TicketComposer() {
     setBusy(true);
     setError(null);
     try {
+      idempotencyKey.current ??= crypto.randomUUID();
       const response = await fetch(`${apiBase}/v1/requests`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "idempotency-key": idempotencyKey.current },
         body: JSON.stringify({ request: { type, title, body, important, dueAt: null }, printerId: "home", source: "pwa" }),
       });
       if (!response.ok) throw new Error(`No se pudo preparar el ticket (${response.status}).`);
       setJob(((await response.json()) as CreateRequestResult).job);
+      idempotencyKey.current = null;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Error inesperado");
     } finally {

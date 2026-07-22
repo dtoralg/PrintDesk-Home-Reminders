@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
-import { runDryJob } from "@printdesk/windows-print-agent";
+import { runTcpJob, startVirtualPrinter } from "@printdesk/windows-print-agent";
 import { buildApp } from "../src/app.js";
 
 let directory: string;
@@ -26,7 +26,7 @@ describe("vertical local", () => {
 
     const created = await fetch(`${apiBase}/v1/requests`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "idempotency-key": "e2e-command-0001" },
       body: JSON.stringify({
         request: {
           type: "task",
@@ -39,17 +39,42 @@ describe("vertical local", () => {
         source: "pwa",
       }),
     });
-    expect(created.status).toBe(201);
+    expect(created.status).toBe(202);
     const result = (await created.json()) as { job: { jobId: string; status: string; previewUrl: string } };
     expect(result.job.status).toBe("queued");
 
-    const dryRun = await runDryJob(apiBase, result.job.jobId, join(directory, "spool"));
-    const bytes = await readFile(dryRun.spoolPath);
+    const duplicate = await fetch(`${apiBase}/v1/requests`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": "e2e-command-0001" },
+      body: JSON.stringify({
+        request: { type: "task", title: "No debe crear otra", body: "", important: false, dueAt: null },
+        printerId: "home",
+        source: "pwa",
+      }),
+    });
+    expect(duplicate.status).toBe(200);
+    expect(((await duplicate.json()) as { job: { jobId: string } }).job.jobId).toBe(result.job.jobId);
+
+    const virtualPrinter = await startVirtualPrinter(join(directory, "virtual-printer"));
+    const capturePromise = virtualPrinter.waitForCapture();
+    const dryRun = await runTcpJob(
+      apiBase,
+      result.job.jobId,
+      { host: virtualPrinter.host, port: virtualPrinter.port },
+      { spoolDirectory: join(directory, "spool"), simulated: true },
+    );
+    const capture = await capturePromise;
+    expect(dryRun.spoolPath).not.toBeNull();
+    const bytes = await readFile(dryRun.spoolPath!);
     expect(bytes.length).toBeGreaterThan(1_000);
     expect(bytes.subarray(0, 2)).toEqual(Buffer.from([0x1b, 0x40]));
+    expect(capture.bytes).toEqual(bytes);
+    expect(capture.widthPixels).toBe(576);
+    expect(capture.hasCut).toBe(true);
 
     const status = await fetch(`${apiBase}/v1/print-jobs/${result.job.jobId}`).then((response) => response.json()) as { status: string; attempts: number };
     expect(status).toMatchObject({ status: "printed_simulated", attempts: 1 });
+    await virtualPrinter.close();
     await app.close();
   }, 20_000);
 });

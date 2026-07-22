@@ -1,21 +1,28 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
-import { createReadStream } from "node:fs";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
+import {
+  createApiDependencies,
+  type ArtifactStore,
+  type EventPublisher,
+  type PrintDeskRepository,
+  type RequestGraph,
+  type StoredPrintJob,
+} from "@printdesk/backend";
 import {
   createRequestCommandSchema,
   type CreateRequestResult,
   type PrintJobView,
 } from "@printdesk/shared-models";
 import { authenticate } from "./auth.js";
-import { LocalStore } from "./local-store.js";
-import { renderRequest } from "./renderer.js";
-import type { StoredPrintJob, StoredRequest } from "./types.js";
 
 export interface AppOptions {
   dataDir?: string;
   publicBaseUrl?: string;
+  repository?: PrintDeskRepository;
+  artifacts?: ArtifactStore;
+  events?: EventPublisher;
 }
 
 const idSchema = z.uuid();
@@ -35,12 +42,16 @@ function view(job: StoredPrintJob, baseUrl: string): PrintJobView {
 
 export async function buildApp(options: AppOptions = {}) {
   const app = Fastify({ logger: process.env.NODE_ENV !== "test" });
-  await app.register(cors, { origin: true });
-  const dataDir = options.dataDir ?? process.env.PRINTDESK_DATA_DIR ?? ".local-data";
+  await app.register(cors, { origin: true, exposedHeaders: ["idempotency-key"] });
+  const defaults = options.repository && options.artifacts && options.events
+    ? null
+    : createApiDependencies(options.dataDir);
+  const repository = options.repository ?? defaults!.repository;
+  const artifacts = options.artifacts ?? defaults!.artifacts;
+  const events = options.events ?? defaults!.events;
   const baseUrl = options.publicBaseUrl ?? process.env.PRINTDESK_PUBLIC_BASE_URL ?? "http://localhost:8080";
-  const store = new LocalStore(dataDir);
 
-  app.get("/healthz", async () => ({ status: "ok" }));
+  app.get("/healthz", async () => ({ status: "ok", backend: process.env.PRINTDESK_BACKEND ?? "local" }));
 
   app.post("/v1/requests", async (request, reply) => {
     let actor;
@@ -52,47 +63,66 @@ export async function buildApp(options: AppOptions = {}) {
     const command = createRequestCommandSchema.safeParse(request.body);
     if (!command.success) return reply.code(400).send({ error: "invalid_request", issues: command.error.issues });
 
+    const rawKey = request.headers["idempotency-key"];
+    const suppliedKey = Array.isArray(rawKey) ? rawKey[0] : rawKey;
+    if (suppliedKey && (suppliedKey.length > 128 || suppliedKey.length < 8)) {
+      return reply.code(400).send({ error: "invalid_idempotency_key" });
+    }
+    const idempotencyKey = suppliedKey ?? randomUUID();
+    const commandId = createHash("sha256").update(`${actor.uid}:${idempotencyKey}`).digest("hex");
     const requestId = randomUUID();
     const jobId = randomUUID();
+    const eventId = randomUUID();
     const shortCode = randomBytes(6).toString("base64url");
     const now = new Date().toISOString();
-    const storedRequest: StoredRequest = {
-      requestId,
-      input: command.data.request,
-      createdBy: actor,
-      source: command.data.source,
-      shortCode,
-      shortUrl: `${baseUrl}/r/${shortCode}`,
-      createdAt: now,
+    const graph: RequestGraph = {
+      commandId,
+      request: {
+        requestId,
+        input: command.data.request,
+        createdBy: actor,
+        source: command.data.source,
+        shortCode,
+        shortUrl: `${baseUrl}/r/${shortCode}`,
+        createdAt: now,
+      },
+      job: {
+        jobId,
+        requestId,
+        printerId: command.data.printerId,
+        status: "rendering",
+        previewPath: null,
+        escposPath: null,
+        attempts: 0,
+        error: null,
+        renderLeaseEventId: null,
+        renderLeaseExpiresAt: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      event: { eventId, requestId, jobId, occurredAt: now },
     };
-    const job: StoredPrintJob = {
-      jobId,
-      requestId,
-      printerId: command.data.printerId,
-      status: "rendering",
-      previewPath: null,
-      escposPath: null,
-      attempts: 0,
-      error: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await Promise.all([store.putRequest(storedRequest), store.putJob(job)]);
-
+    const stored = await repository.createRequestGraph(graph);
     try {
-      const artifacts = await renderRequest(storedRequest, `${store.root}/artifacts`);
-      Object.assign(job, artifacts, { status: "queued", updatedAt: new Date().toISOString() });
+      await events.publish(stored.event);
     } catch (error) {
-      Object.assign(job, { status: "failed", error: (error as Error).message, updatedAt: new Date().toISOString() });
+      request.log.error({ error, eventId: stored.event.eventId }, "Unable to publish request.created");
+      return reply.code(503).send({
+        error: "event_publish_failed",
+        retryWithIdempotencyKey: idempotencyKey,
+        requestId: stored.request.requestId,
+        jobId: stored.job.jobId,
+      });
     }
-    await store.putJob(job);
+    const currentJob = await repository.getJob(stored.job.jobId) ?? stored.job;
     const result: CreateRequestResult = {
-      requestId,
-      job: view(job, baseUrl),
-      shortCode,
-      shortUrl: storedRequest.shortUrl,
+      requestId: stored.request.requestId,
+      job: view(currentJob, baseUrl),
+      shortCode: stored.request.shortCode,
+      shortUrl: stored.request.shortUrl,
     };
-    return reply.code(job.status === "queued" ? 201 : 500).send(result);
+    reply.header("idempotency-key", idempotencyKey);
+    return reply.code(stored.created ? 202 : 200).send(result);
   });
 
   app.get("/v1/print-jobs/:jobId", async (request, reply) => {
@@ -103,7 +133,7 @@ export async function buildApp(options: AppOptions = {}) {
     }
     const parsed = idSchema.safeParse((request.params as { jobId: string }).jobId);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_job_id" });
-    const job = await store.getJob(parsed.data);
+    const job = await repository.getJob(parsed.data);
     if (!job) return reply.code(404).send({ error: "not_found" });
     return view(job, baseUrl);
   });
@@ -114,20 +144,17 @@ export async function buildApp(options: AppOptions = {}) {
     }
     const parsed = idSchema.safeParse((request.params as { jobId: string }).jobId);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_job_id" });
-    const job = await store.getJob(parsed.data);
+    const job = await repository.getJob(parsed.data);
     if (!job?.previewPath) return reply.code(404).send({ error: "not_found" });
-    return reply.type("image/png").send(createReadStream(job.previewPath));
+    return reply.type("image/png").send(await artifacts.read(job.previewPath));
   });
 
   app.post("/v1/print-jobs/:jobId/claim", async (request, reply) => {
     if (process.env.PRINTDESK_ALLOW_DEV_AUTH !== "true" || process.env.NODE_ENV === "production") return reply.code(403).send({ error: "device_auth_required" });
     const parsed = idSchema.safeParse((request.params as { jobId: string }).jobId);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_job_id" });
-    const job = await store.getJob(parsed.data);
-    if (!job?.escposPath) return reply.code(404).send({ error: "not_found" });
-    if (job.status !== "queued") return reply.code(409).send({ error: "job_not_queued", status: job.status });
-    Object.assign(job, { status: "claimed", attempts: job.attempts + 1, updatedAt: new Date().toISOString() });
-    await store.putJob(job);
+    const job = await repository.claimJob(parsed.data);
+    if (!job) return reply.code(409).send({ error: "job_not_queued" });
     return { artifactUrl: `/v1/print-jobs/${job.jobId}/artifact` };
   });
 
@@ -135,21 +162,30 @@ export async function buildApp(options: AppOptions = {}) {
     if (process.env.PRINTDESK_ALLOW_DEV_AUTH !== "true" || process.env.NODE_ENV === "production") return reply.code(403).send({ error: "device_auth_required" });
     const parsed = idSchema.safeParse((request.params as { jobId: string }).jobId);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_job_id" });
-    const job = await store.getJob(parsed.data);
+    const job = await repository.getJob(parsed.data);
     if (!job?.escposPath || job.status !== "claimed") return reply.code(409).send({ error: "job_not_claimed" });
-    return reply.type("application/octet-stream").send(createReadStream(job.escposPath));
+    return reply.type("application/octet-stream").send(await artifacts.read(job.escposPath));
   });
 
   app.post("/v1/print-jobs/:jobId/complete", async (request, reply) => {
     if (process.env.PRINTDESK_ALLOW_DEV_AUTH !== "true" || process.env.NODE_ENV === "production") return reply.code(403).send({ error: "device_auth_required" });
     const parsed = idSchema.safeParse((request.params as { jobId: string }).jobId);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_job_id" });
-    const body = z.object({ outcome: z.literal("printed_simulated") }).safeParse(request.body);
+    const body = z.object({ outcome: z.enum(["printed", "printed_simulated"]) }).safeParse(request.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_outcome" });
-    const job = await store.getJob(parsed.data);
-    if (!job || job.status !== "claimed") return reply.code(409).send({ error: "job_not_claimed" });
-    Object.assign(job, { status: body.data.outcome, updatedAt: new Date().toISOString() });
-    await store.putJob(job);
+    const job = await repository.completePrint(parsed.data, body.data.outcome);
+    if (!job) return reply.code(409).send({ error: "job_not_claimed" });
+    return view(job, baseUrl);
+  });
+
+  app.post("/v1/print-jobs/:jobId/fail", async (request, reply) => {
+    if (process.env.PRINTDESK_ALLOW_DEV_AUTH !== "true" || process.env.NODE_ENV === "production") return reply.code(403).send({ error: "device_auth_required" });
+    const parsed = idSchema.safeParse((request.params as { jobId: string }).jobId);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_job_id" });
+    const body = z.object({ error: z.string().trim().min(1).max(500), retryable: z.boolean() }).safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_failure" });
+    const job = await repository.failPrint(parsed.data, body.data.error, body.data.retryable);
+    if (!job) return reply.code(409).send({ error: "job_not_claimed" });
     return view(job, baseUrl);
   });
 

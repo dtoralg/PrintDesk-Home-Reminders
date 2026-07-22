@@ -12,12 +12,17 @@
 Criterio: `pnpm test:e2e` termina el trabajo en `printed_simulated` y conserva
 una copia no vacía del ESC/POS descargado.
 
-## Milestone 2 — persistencia y eventos Google Cloud
+## Milestone 2 — persistencia y eventos Google Cloud (implementado)
 
 - Interfaces de repositorio y bus con adaptadores Firestore/Pub/Sub.
 - Cloud Storage privado y URLs firmadas breves.
 - Render service idempotente y estados con precondiciones/transacciones.
 - Emuladores y test de reentrega del evento.
+
+El API escribe request, job y comando idempotente en una transacción. Pub/Sub
+entrega un evento a `render-service`, que usa un lease recuperable, publica
+artefactos inmutables y tolera reentregas. La configuración productiva se hace
+desde la consola siguiendo `docs/gcp-console-setup.md`.
 
 ## Milestone 3 — identidad y experiencia
 
@@ -28,7 +33,8 @@ una copia no vacía del ESC/POS descargado.
 ## Milestone 4 — impresora y agente
 
 - Suscripción StreamingPull, lease idempotente y cola persistente.
-- Transporte TCP 9100 con timeout y reintentos acotados.
+- Transporte TCP 9100 con timeout y reintentos seguros antes del envío (implementado).
+- Impresora virtual, captura byte a byte y validador ESC/POS (implementado).
 - Prueba física de raster, caracteres, QR, avance y corte.
 
 ## Milestone 5 — Vertex AI y Notion

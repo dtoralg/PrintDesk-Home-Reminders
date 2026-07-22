@@ -17,7 +17,10 @@ y pruebas. Las fronteras mantienen el diseño objetivo: Cloud Run, Firebase Auth
 allowlist de Firestore, Pub/Sub, Cloud Storage y un agente mínimo que entrega el
 ESC/POS por TCP 9100.
 
-Consulta [la arquitectura](docs/architecture.md) y [el plan](docs/implementation-plan.md).
+Consulta [la arquitectura](docs/architecture.md), [el plan](docs/implementation-plan.md),
+[la configuración mediante Google Cloud Console](docs/gcp-console-setup.md) y
+[las pruebas con emuladores](docs/local-emulators.md). Para validar la impresión
+antes de tener hardware, sigue [las pruebas en seco por TCP 9100](docs/dry-run-printing.md).
 
 ## Puesta en marcha local
 
@@ -46,8 +49,9 @@ que está ignorado por Git.
 pnpm typecheck
 pnpm test
 pnpm test:e2e
+pnpm test:printer
 ```
 
-`test:e2e` levanta el API dentro del proceso de prueba, crea una solicitud real,
-renderiza una imagen de 576 px y 1 bit, genera ESC/POS, ejecuta el agente dry-run
-y comprueba que el trabajo termina en `printed_simulated`.
+`test:printer` levanta el API y una impresora virtual TCP, crea una solicitud real,
+renderiza una imagen de 576 px y 1 bit, genera ESC/POS, ejecuta el agente por el
+mismo transporte que el hardware y comprueba que termina en `printed_simulated`.
