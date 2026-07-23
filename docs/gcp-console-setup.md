@@ -104,6 +104,11 @@ proporcionadas por Google**. Busca el agente
 **Service Account Token Creator** sobre `printdesk-pubsub-push`. Esto permite
 que Pub/Sub emita el token OIDC que Cloud Run validará.
 
+### `printdesk-web`
+
+Créala sin roles de proyecto y sin claves. El frontend no accede directamente
+a Firestore, Storage ni Pub/Sub; el navegador invoca `printdesk-api`.
+
 ## 6. Artifact Registry y Cloud Build
 
 1. Abre **Artifact Registry > Repositories > Crear repositorio**.

@@ -102,3 +102,44 @@ usa **Edit & deploy new revision** para establecer `PRINTDESK_PUBLIC_BASE_URL`.
 - Un usuario de Firebase que no esté en `authorized_users` recibe 401.
 - Un usuario habilitado puede crear el ticket y Pub/Sub entrega el evento al
   renderer privado.
+
+## 6. Desplegar `printdesk-web` en Cloud Run
+
+Cloud Build publica la imagen `printdesk-web` en Artifact Registry. Next.js
+incorpora la configuración pública `NEXT_PUBLIC_*` al bundle durante el build.
+
+1. Antes del primer build, abre **Cloud Build > Triggers**, edita el trigger de
+   `main` y añade estas sustituciones con los valores de **Firebase Console >
+   Project settings > General > Your apps > PrintDesk Web**:
+
+   ```text
+   _WEB_API_BASE_URL=https://printdesk-api-128063282321.europe-southwest1.run.app
+   _WEB_FIREBASE_API_KEY=<apiKey>
+   _WEB_FIREBASE_AUTH_DOMAIN=<authDomain>
+   _WEB_FIREBASE_PROJECT_ID=printdesk-503214
+   _WEB_FIREBASE_APP_ID=<appId>
+   ```
+
+2. En **IAM y administración > Cuentas de servicio**, crea `printdesk-web` sin
+   roles y sin claves.
+3. Cuando Cloud Build termine, abre **Cloud Run > Deploy container**.
+4. Selecciona la imagen:
+
+   ```text
+   europe-southwest1-docker.pkg.dev/printdesk-503214/printdesk/printdesk-web:<COMMIT>
+   ```
+
+5. Service name: `printdesk-web`; region: `europe-southwest1`.
+6. Authentication: **Allow public access**; ingress: **All**.
+7. En **Security**, selecciona:
+
+   ```text
+   printdesk-web@printdesk-503214.iam.gserviceaccount.com
+   ```
+
+8. Puerto `8080`, memoria `512 MiB`, timeout `60 s`, mínimo `0`, máximo `3`.
+   No necesita variables de entorno ni acceso directo a servicios de GCP.
+9. Despliega y copia el hostname de la URL, sin `https://` ni `/`.
+10. En **Firebase Console > Authentication > Settings > Authorized domains**,
+    añade ese hostname.
+11. Abre la PWA desplegada, inicia sesión y crea un ticket de prueba.
