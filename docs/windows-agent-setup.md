@@ -52,7 +52,61 @@ C:\ProgramData\PrintDesk\credentials.json
 Restringe el archivo al usuario de Windows que ejecutará el agente. La clave se
 eliminará cuando se sustituya por una identidad federada adecuada.
 
-## Ejecución local
+## Instalación silenciosa al arrancar Windows
+
+El paquete final no necesita Node.js, pnpm, PowerShell ni una terminal abiertos
+para funcionar. Contiene un único `printdesk-agent.exe` y un instalador que lo
+registra en el Programador de tareas.
+
+1. Construye el paquete desde la raíz del repositorio:
+
+   ```powershell
+   pnpm --filter @printdesk/windows-print-agent build:exe
+   ```
+
+2. Comprueba que ya existe esta credencial:
+
+   ```text
+   C:\ProgramData\PrintDesk\credentials.json
+   ```
+
+3. Cierra cualquier agente que siga ejecutándose manualmente. No deben existir
+   dos consumidores locales compitiendo por la misma suscripción.
+4. Abre PowerShell **como administrador** y ejecuta:
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File "E:\Github Repos\PrintDesk---Home-Reminders\agents\windows-print-agent\dist\windows-x64\install-windows.ps1"
+   ```
+
+El instalador copia el ejecutable a `C:\ProgramData\PrintDesk`, conserva la
+credencial existente y registra la tarea `PrintDesk Agent` con estas
+propiedades:
+
+- se inicia al arrancar el ordenador, incluso antes de iniciar sesión;
+- se ejecuta como `SYSTEM` en una sesión no interactiva, sin ventanas;
+- se reinicia automáticamente si el proceso falla;
+- impide dos instancias simultáneas.
+
+No se instala icono de bandeja: el agente queda completamente silencioso. Su
+estado se consulta con:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\ProgramData\PrintDesk\status-windows.ps1"
+Get-Content "C:\ProgramData\PrintDesk\logs\agent.log" -Tail 30
+```
+
+La configuración editable queda en
+`C:\ProgramData\PrintDesk\config.json`. Para aplicar un cambio, reinicia la
+tarea desde el Programador de tareas o reinicia Windows.
+
+Para desinstalar solo el autoarranque, sin borrar credenciales, configuración,
+logs ni trabajos conservados:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\ProgramData\PrintDesk\uninstall-windows.ps1"
+```
+
+## Ejecución local para desarrollo
 
 Desde la raíz del repositorio:
 

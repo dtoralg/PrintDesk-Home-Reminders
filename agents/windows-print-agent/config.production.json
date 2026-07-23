@@ -1,0 +1,12 @@
+{
+  "projectId": "printdesk-503214",
+  "subscriptionId": "home-print-agent",
+  "apiBaseUrl": "https://printdesk-api-128063282321.europe-southwest1.run.app",
+  "audience": "https://printdesk-api-128063282321.europe-southwest1.run.app",
+  "printerId": "home",
+  "printerHost": "192.168.1.153",
+  "printerPort": 9100,
+  "spoolDirectory": "C:\\ProgramData\\PrintDesk\\spool",
+  "credentialsPath": "C:\\ProgramData\\PrintDesk\\credentials.json",
+  "logPath": "C:\\ProgramData\\PrintDesk\\logs\\agent.log"
+}
