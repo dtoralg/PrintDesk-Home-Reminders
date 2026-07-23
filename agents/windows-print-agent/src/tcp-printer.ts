@@ -1,6 +1,7 @@
 import { Socket } from "node:net";
 
 export interface PrintTransport {
+  probe?(): Promise<void>;
   send(bytes: Uint8Array): Promise<void>;
 }
 
@@ -56,7 +57,7 @@ export class Tcp9100Printer implements PrintTransport {
     };
   }
 
-  async send(bytes: Uint8Array) {
+  private async open() {
     let socket: Socket | undefined;
     let lastError: unknown;
     for (let attempt = 1; attempt <= this.options.connectAttempts; attempt += 1) {
@@ -68,7 +69,19 @@ export class Tcp9100Printer implements PrintTransport {
       }
     }
     if (!socket) throw new PrinterDeliveryError("printer_unreachable", false, { cause: lastError });
+    return socket;
+  }
 
+  async probe() {
+    const socket = await this.open();
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.end(resolve);
+    });
+  }
+
+  async send(bytes: Uint8Array) {
+    const socket = await this.open();
     await new Promise<void>((resolve, reject) => {
       let deliveryStarted = false;
       const timer = setTimeout(() => socket.destroy(new Error("printer_delivery_timeout")), this.options.deliveryTimeoutMs);

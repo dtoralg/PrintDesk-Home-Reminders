@@ -1,0 +1,16 @@
+{
+  "request": {
+    "type": "task",
+    "title": "Revisión del pingüino",
+    "body": "Póliza, conexión, analítica, autorización y niño. ¿Está todo bien? ¡Sí!",
+    "important": true,
+    "dueAt": null
+  },
+  "shortUrl": "https://printdesk.example/r/acentos",
+  "createdBy": {
+    "uid": "user-1",
+    "displayName": "Dani",
+    "email": "dani@example.com"
+  },
+  "createdAt": "2026-07-23T16:00:00.000Z"
+}

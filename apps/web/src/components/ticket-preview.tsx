@@ -2,10 +2,11 @@ import type { TicketDraft } from "@/lib/web-types";
 import { UiIcon } from "./ui-icon";
 
 interface TicketPreviewProps {
+  creatorName: string;
   draft: TicketDraft;
 }
 
-const labels = { task: "TAREA", idea: "IDEA", reminder: "RECORDATORIO", note: "NOTA" } as const;
+const labels = { task: "TASK", idea: "IDEA", reminder: "RECORDATORIO", note: "NOTA" } as const;
 
 function qrCellFilled(index: number) {
   const x = index % 11;
@@ -21,22 +22,37 @@ function qrCellFilled(index: number) {
 
 function formatDueDate(value: string) {
   if (!value) return null;
-  return new Intl.DateTimeFormat("es-ES", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year}`;
 }
 
-export function TicketPreview({ draft }: TicketPreviewProps) {
+export function TicketPreview({ creatorName, draft }: TicketPreviewProps) {
   const due = formatDueDate(draft.dueLocal);
+  const createdAt = new Intl.DateTimeFormat("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date());
+
   return (
     <article className="ticket-preview">
-      <div className="preview-kind"><span>{labels[draft.type]}</span><span>{draft.important ? "★" : "☆"}</span></div>
+      <div className="preview-kind">
+        <span><UiIcon name={draft.type} size={18} />{labels[draft.type]}</span>
+        {draft.important && <span aria-label="Importante">★</span>}
+      </div>
       <h2>{draft.title.trim() || "Título del ticket"}</h2>
       <div className="preview-rule" />
       <p>{draft.body.trim() || "El detalle de tu solicitud aparecerá aquí."}</p>
       {due && <p className="preview-date"><UiIcon name="calendar" size={15} />{due}</p>}
-      <div className="fake-qr" aria-hidden="true">
-        {Array.from({ length: 121 }, (_, index) => <span className={qrCellFilled(index) ? "filled" : ""} key={index} />)}
-      </div>
-      <small>ABRIR NOTA VIVA</small>
+      <footer className="preview-footer">
+        <div>
+          <span><UiIcon name="user" size={13} />{creatorName}</span>
+          <span><UiIcon name="calendar" size={13} />{createdAt}</span>
+        </div>
+        <div className="fake-qr" aria-hidden="true">
+          {Array.from({ length: 121 }, (_, index) => <span className={qrCellFilled(index) ? "filled" : ""} key={index} />)}
+        </div>
+      </footer>
     </article>
   );
 }

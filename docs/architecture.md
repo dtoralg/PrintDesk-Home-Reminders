@@ -29,14 +29,16 @@ Alexa -> adaptador Alexa ┘         │              │
 ## Fronteras de seguridad
 
 - La PWA usa Firebase Auth con Google. El API verifica el ID token y la entrada
-  `authorized_users/{uid}`; el navegador no decide identidad, timestamps,
+  `authorized-users/{uid}`; el navegador no decide identidad, timestamps,
   estados ni rutas de Storage.
 - Vertex AI solo propone `type`, `title`, `body`, `important` y `dueAt`; la
   salida pasa por el mismo esquema estricto del modo avanzado.
 - El bucket es privado y los nombres de objeto derivan de IDs del servidor.
 - El agente usa identidad de dispositivo separada. Solo reclama un job,
   descarga bytes ya renderizados, comprueba TCP 9100 y los entrega.
-- `/r/{code}` redirigirá únicamente a hosts HTTPS permitidos de Notion.
+- `/r/{code}` muestra la página viva pública asociada al código opaco. Cuando
+  exista la copia de Notion, solo podrá redirigir a hosts HTTPS permitidos de
+  Notion.
 - Todas las transiciones que cruzan Pub/Sub son idempotentes y auditables.
 
 ## Modelo mínimo

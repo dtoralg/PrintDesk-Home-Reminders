@@ -32,8 +32,8 @@ través de la cuenta de servicio asignada al servicio.
 5. Elige reglas restrictivas/denegar por defecto para clientes web y móviles.
 6. Activa la protección contra eliminación si la consola la ofrece.
 
-No es necesario crear colecciones a mano. El API creará `commands`, `requests`
-y `print_jobs` en su primera solicitud válida. `commands` conserva la clave de
+No es necesario crear colecciones a mano. El API creará `commands`, `requests`,
+`print_jobs` y `printer_checks` cuando reciba las primeras operaciones válidas. `commands` conserva la clave de
 idempotencia y el evento original para que un reintento no duplique el ticket.
 
 ## 3. Bucket privado
@@ -61,6 +61,9 @@ el API o URLs firmadas de corta duración en un milestone posterior.
 4. Crea un segundo topic con ID `request-created-dead-letter` y una suscripción
    pull asociada llamada `request-created-dead-letter-inspect`; sin suscripción,
    los mensajes enviados al topic no se conservarían para inspección.
+5. Crea un tercer topic con ID `printer-check-requested`, sin suscripción
+   predeterminada, esquema, retención ni transformaciones. Este topic nunca
+   transporta tickets: solo IDs de comprobaciones TCP.
 
 La suscripción push se crea después de desplegar `printdesk-render`, porque se
 necesita su URL HTTPS.
@@ -91,6 +94,15 @@ En el bucket concede:
 
 - **Storage Object Creator** (`roles/storage.objectCreator`)
 
+### `printdesk-notion`
+
+Créala sin claves y concede:
+
+- **Cloud Datastore User** (`roles/datastore.user`), para leer solicitudes y
+  guardar el estado de la sincronización en Firestore.
+- **Secret Manager Secret Accessor** (`roles/secretmanager.secretAccessor`)
+  únicamente sobre los dos secretos de Notion descritos en el paso 10.
+
 ### `printdesk-pubsub-push`
 
 Créala sin roles de proyecto. Después de crear el servicio Cloud Run
@@ -117,7 +129,7 @@ a Firestore, Storage ni Pub/Sub; el navegador invoca `printdesk-api`.
 4. Región: `europe-southwest1`.
 5. Cifrado administrado por Google. Mantén el análisis de vulnerabilidades
    desactivado inicialmente si quieres evitar su coste adicional.
-6. Configura los cuatro triggers segmentados y sus permisos siguiendo
+6. Configura los cinco triggers segmentados y sus permisos siguiendo
    `docs/cloud-build-pipelines.md`.
 
 Los triggers de API, renderer y web ejecutan pruebas específicas, publican una
@@ -171,7 +183,7 @@ No habilites payload unwrapping: `render-service` valida el sobre estándar
 ## 9. Firebase Auth, allowlist y Cloud Run: API
 
 El código ya verifica el ID token de Firebase y exige
-`authorized_users/{uid}.enabled == true`. Activa Google Sign-In, crea el primer
+`authorized-users/{uid}.enabled == true`. Activa Google Sign-In, crea el primer
 usuario autorizado y despliega `printdesk-api` siguiendo la guía completa
 `docs/firebase-auth-setup.md`.
 
@@ -179,11 +191,77 @@ La API usa **Allow public access** en Cloud Run para que los ID tokens de usuari
 finales lleguen al contenedor. Todas las operaciones de usuario siguen protegidas
 por Firebase y la allowlist. `printdesk-render` permanece privado mediante IAM.
 
+En la revisión de `printdesk-api`, añade:
+
+```text
+PRINTDESK_PRINTER_CHECK_TOPIC=printer-check-requested
+```
+
+La cuenta `printdesk-api` debe tener **Pub/Sub Publisher** sobre ese topic. Si ya
+le concediste el rol a nivel de proyecto no añadas otra concesión duplicada.
+
+## 10. Notion unilateral
+
+Esta integración es independiente del renderer: un fallo de Notion nunca
+bloquea la impresión.
+
+1. En Notion, crea una integración interna con capacidad **Insert content**.
+2. Crea una página padre llamada `PrintDesk`, conéctala a la integración y copia
+   tanto el token de la integración como el ID de la página.
+3. En **Secret Manager > Crear secreto**, crea:
+   - `printdesk-notion-token`, con el token como valor.
+   - `printdesk-notion-parent-page-id`, con el ID de la página como valor.
+4. En cada secreto, abre **Permisos** y concede **Secret Manager Secret
+   Accessor** a `printdesk-notion`.
+5. Crea el trigger segmentado que usa `cloudbuild.notion.yaml`. Sus archivos
+   incluidos son:
+
+   ```text
+   apps/notion-service/**
+   packages/backend/**
+   packages/shared-models/**
+   cloudbuild.notion.yaml
+   package.json
+   pnpm-lock.yaml
+   pnpm-workspace.yaml
+   tsconfig.base.json
+   .dockerignore
+   ```
+
+6. Cuando Artifact Registry contenga `printdesk-notion`, crea el servicio
+   privado de Cloud Run `printdesk-notion` en `europe-southwest1`, puerto 8080,
+   con la cuenta `printdesk-notion`.
+7. En la revisión del servicio configura:
+
+   ```text
+   GOOGLE_CLOUD_PROJECT=<PROJECT_ID>
+   PRINTDESK_FIRESTORE_DATABASE=(default)
+   PRINTDESK_NOTION_TOKEN=<secreto printdesk-notion-token:latest>
+   PRINTDESK_NOTION_PARENT_PAGE_ID=<secreto printdesk-notion-parent-page-id:latest>
+   ```
+
+   Para los dos últimos valores usa **Reference a secret**, no pegues los
+   secretos como texto.
+8. En **Permisos** del servicio concede **Cloud Run Invoker** a
+   `printdesk-pubsub-push`.
+9. Crea una segunda suscripción push sobre el topic `request-created`:
+   - ID: `notion-request-created`.
+   - Endpoint: `<URL_NOTION>/events/request-created`.
+   - Autenticación: `printdesk-pubsub-push`.
+   - Audience: `<URL_NOTION>`.
+   - Ack deadline: 60 segundos.
+   - Reintentos: 10–600 segundos.
+   - Dead-letter topic: `request-created-dead-letter`, máximo 5 intentos.
+10. Tras la primera solicitud, Firestore creará `notion_syncs/{requestId}`.
+    Cuando el estado sea `ready`, `/r/<shortCode>` redirigirá a Notion;
+    `/r/<shortCode>?view=live` siempre mostrará la copia viva de PrintDesk.
+
 ## Comprobación visual
 
 Desde la consola verifica:
 
-- Firestore contiene `commands`, `requests` y `print_jobs`.
+- Firestore contiene `commands`, `requests`, `print_jobs` y, después de la
+  primera prueba manual, `printer_checks` y `notion_syncs`.
 - Pub/Sub muestra mensajes confirmados y cero mensajes antiguos sin confirmar.
 - El bucket contiene `print-jobs/<requestId>/preview.png` y `ticket.escpos`.
 - Los logs de `printdesk-render` muestran respuestas HTTP 204.

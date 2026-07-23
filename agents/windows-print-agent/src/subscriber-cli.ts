@@ -1,8 +1,11 @@
 import { PubSub, type Message } from "@google-cloud/pubsub";
 import { GoogleAuth } from "google-auth-library";
-import { printJobReadyEventSchema } from "@printdesk/shared-models";
+import {
+  printerCheckRequestedEventSchema,
+  printJobReadyEventSchema,
+} from "@printdesk/shared-models";
 import { loadAgentConfig, installFileLogger } from "./config.js";
-import { runTcpJob } from "./index.js";
+import { runPrinterCheck, runTcpJob } from "./index.js";
 
 async function main() {
   const config = loadAgentConfig();
@@ -20,6 +23,9 @@ async function main() {
 
   const pubsub = new PubSub({ projectId: config.projectId });
   const subscription = pubsub.subscription(config.subscriptionId, {
+    flowControl: { maxMessages: 1, allowExcessMessages: false },
+  });
+  const checkSubscription = pubsub.subscription(config.printerCheckSubscriptionId, {
     flowControl: { maxMessages: 1, allowExcessMessages: false },
   });
   let stopping = false;
@@ -70,16 +76,67 @@ async function main() {
     }
   }
 
+  async function handlePrinterCheck(message: Message) {
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(message.data.toString("utf8"));
+    } catch {
+      console.error("Mensaje de comprobación no contiene JSON válido; se confirma para evitar un bucle.");
+      message.ack();
+      return;
+    }
+    const event = printerCheckRequestedEventSchema.safeParse(decoded);
+    if (!event.success) {
+      console.error("Evento printer-check.requested inválido; se confirma para evitar un bucle.", event.error.issues);
+      message.ack();
+      return;
+    }
+    if (event.data.printerId !== config.printerId) {
+      console.log(`Comprobación ${event.data.checkId} dirigida a ${event.data.printerId}; agente ${config.printerId} la ignora.`);
+      message.ack();
+      return;
+    }
+    try {
+      const result = await runPrinterCheck(
+        config.apiBaseUrl,
+        event.data.checkId,
+        {
+          host: config.printerHost,
+          port: config.printerPort,
+          connectAttempts: 2,
+          connectTimeoutMs: 1_500,
+        },
+        { authorization },
+      );
+      if (!result) {
+        console.log(`Comprobación ${event.data.checkId} ya resuelta; se confirma la reentrega.`);
+        message.ack();
+        return;
+      }
+      console.log(JSON.stringify({
+        checkId: event.data.checkId,
+        status: result.status,
+        error: result.error,
+      }));
+      message.ack();
+    } catch (error) {
+      console.error(`Falló la comprobación ${event.data.checkId}: ${error instanceof Error ? error.message : String(error)}`);
+      message.nack();
+    }
+  }
+
   subscription.on("message", (message) => void handle(message));
   subscription.on("error", (error) => console.error("Error de suscripción Pub/Sub:", error));
+  checkSubscription.on("message", (message) => void handlePrinterCheck(message));
+  checkSubscription.on("error", (error) => console.error("Error de suscripción de comprobaciones:", error));
   console.log(
-    `Agente PrintDesk escuchando ${config.subscriptionId}; impresora tcp://${config.printerHost}:${config.printerPort}`,
+    `Agente PrintDesk escuchando ${config.subscriptionId} y ${config.printerCheckSubscriptionId}; impresora tcp://${config.printerHost}:${config.printerPort}`,
   );
 
   async function stop() {
     if (stopping) return;
     stopping = true;
-    await subscription.close();
+    await Promise.all([subscription.close(), checkSubscription.close()]);
     await pubsub.close();
   }
 

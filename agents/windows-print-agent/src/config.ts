@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 interface ConfigFile {
   projectId?: string;
   subscriptionId?: string;
+  printerCheckSubscriptionId?: string;
   apiBaseUrl?: string;
   audience?: string;
   printerId?: string;
@@ -17,6 +18,7 @@ interface ConfigFile {
 export interface AgentConfig {
   projectId: string;
   subscriptionId: string;
+  printerCheckSubscriptionId: string;
   apiBaseUrl: string;
   audience: string;
   printerId: string;
@@ -66,6 +68,9 @@ export function loadAgentConfig(): AgentConfig {
       optionalString(process.env.PRINTDESK_AGENT_SUBSCRIPTION) ?? optionalString(file.subscriptionId),
       "subscriptionId",
     ),
+    printerCheckSubscriptionId: optionalString(process.env.PRINTDESK_PRINTER_CHECK_SUBSCRIPTION)
+      ?? optionalString(file.printerCheckSubscriptionId)
+      ?? "home-printer-checks",
     apiBaseUrl,
     audience: optionalString(process.env.PRINTDESK_DEVICE_TOKEN_AUDIENCE)
       ?? optionalString(file.audience)

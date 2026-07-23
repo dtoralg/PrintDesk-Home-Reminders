@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { inspectEscPos } from "./escpos.js";
 import { PrinterDeliveryError, Tcp9100Printer, type PrintTransport, type TcpPrinterOptions } from "./tcp-printer.js";
+import type { PrinterCheckView } from "@printdesk/shared-models";
 
 export { inspectEscPos } from "./escpos.js";
 export { PrinterDeliveryError, Tcp9100Printer } from "./tcp-printer.js";
@@ -41,6 +42,22 @@ async function reportFailure(
   }).catch(() => undefined);
 }
 
+async function reportStatus(
+  base: string,
+  jobId: string,
+  status: "checking_printer" | "printing",
+  options: RunPrintJobOptions,
+) {
+  return expectOk(
+    await fetch(new URL(`v1/print-jobs/${jobId}/status`, base), {
+      method: "POST",
+      headers: { "content-type": "application/json", ...await authHeaders(options) },
+      body: JSON.stringify({ status }),
+    }),
+    `status_${status}`,
+  );
+}
+
 export async function runPrintJob(apiBaseUrl: string, jobId: string, options: RunPrintJobOptions) {
   const base = apiBaseUrl.endsWith("/") ? apiBaseUrl : `${apiBaseUrl}/`;
   const claim = await expectOk(
@@ -65,6 +82,9 @@ export async function runPrintJob(apiBaseUrl: string, jobId: string, options: Ru
       spoolPath = join(directory, `${jobId}.escpos`);
       await writeFile(spoolPath, bytes);
     }
+    await reportStatus(base, jobId, "checking_printer", options);
+    if (options.transport?.probe) await options.transport.probe();
+    await reportStatus(base, jobId, "printing", options);
     if (options.transport) {
       deliveryAttempted = true;
       await options.transport.send(bytes);
@@ -100,4 +120,39 @@ export function runTcpJob(
     simulated: options.simulated ?? false,
     transport: new Tcp9100Printer(printer),
   });
+}
+
+export async function runPrinterCheck(
+  apiBaseUrl: string,
+  checkId: string,
+  printer: TcpPrinterOptions,
+  options: { authorization?: () => Promise<string> } = {},
+) {
+  const base = apiBaseUrl.endsWith("/") ? apiBaseUrl : `${apiBaseUrl}/`;
+  const headers = async () => options.authorization ? { authorization: await options.authorization() } : {};
+  const claim = await fetch(new URL(`v1/printer-checks/${checkId}/claim`, base), {
+    method: "POST",
+    headers: await headers(),
+  });
+  if (claim.status === 409) return null;
+  await expectOk(claim, "printer_check_claim");
+
+  let available = false;
+  let error: string | null = null;
+  try {
+    await new Tcp9100Printer(printer).probe();
+    available = true;
+  } catch (cause) {
+    error = cause instanceof Error ? cause.message : "printer_unreachable";
+  }
+
+  const completed = await expectOk(
+    await fetch(new URL(`v1/printer-checks/${checkId}/complete`, base), {
+      method: "POST",
+      headers: { "content-type": "application/json", ...await headers() },
+      body: JSON.stringify({ available, error }),
+    }),
+    "printer_check_complete",
+  );
+  return await completed.json() as PrinterCheckView;
 }

@@ -1,5 +1,7 @@
 import type {
   CreatedBy,
+  NotionSyncStatus,
+  PrinterCheckStatus,
   PrintJobStatus,
   RequestCreatedEvent,
   RequestInput,
@@ -44,6 +46,39 @@ export interface CreatedGraph extends RequestGraph {
 export interface RenderWork {
   request: StoredRequest;
   job: StoredPrintJob;
+  event: RequestCreatedEvent;
+}
+
+export interface RequestHistoryEntry {
+  request: StoredRequest;
+  job: StoredPrintJob;
+}
+
+export interface StoredPrinterCheck {
+  checkId: string;
+  printerId: string;
+  requestedBy: CreatedBy;
+  status: PrinterCheckStatus;
+  error: string | null;
+  requestedAt: string;
+  updatedAt: string;
+}
+
+export interface StoredNotionSync {
+  requestId: string;
+  status: Exclude<NotionSyncStatus, "pending">;
+  pageId: string | null;
+  pageUrl: string | null;
+  error: string | null;
+  leaseEventId: string | null;
+  leaseExpiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NotionSyncWork {
+  request: StoredRequest;
+  sync: StoredNotionSync;
   event: RequestCreatedEvent;
 }
 

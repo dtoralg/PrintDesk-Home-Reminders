@@ -34,7 +34,7 @@ function productionDependencies(): AuthDependencies {
   return {
     verifyIdToken: (token) => getAuth(firebaseApp).verifyIdToken(token),
     async getAuthorizedUser(uid) {
-      const snapshot = await firestore!.doc(`authorized_users/${uid}`).get();
+      const snapshot = await firestore!.doc(`authorized-users/${uid}`).get();
       return snapshot.exists ? snapshot.data() as AuthorizedUserRecord : null;
     },
   };

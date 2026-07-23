@@ -39,23 +39,31 @@ export function ResultView({ ticket, user, onCreateAnother, onFinish }: ResultVi
         <div className="result-icon"><UiIcon name="check" size={48} /></div>
         <h1>¡Impreso correctamente!</h1>
         <p>Tu ticket ha salido de la impresora.</p>
-        <article className="result-ticket">
-          <div>
-            <span className="result-kind">{ticket.draft.type.toUpperCase()}</span>
-            <span>{ticket.draft.important ? "★" : "☆"}</span>
-          </div>
-          <h2>{ticket.draft.title}</h2>
-          <p>{ticket.draft.body || "Sin detalles adicionales."}</p>
-          {previewUrl && (
+        <article className={previewUrl ? "result-ticket has-preview" : "result-ticket"}>
+          {previewUrl ? (
             // La imagen procede del endpoint autenticado de PrintDesk y conserva su tamaño térmico real.
             // eslint-disable-next-line @next/next/no-img-element
             <img alt={`Vista previa de ${ticket.draft.title}`} src={previewUrl} />
+          ) : (
+            <>
+              <div>
+                <span className="result-kind">{ticket.draft.type.toUpperCase()}</span>
+                <span>{ticket.draft.important ? "★" : "☆"}</span>
+              </div>
+              <h2>{ticket.draft.title}</h2>
+              <p>{ticket.draft.body || "Sin detalles adicionales."}</p>
+            </>
           )}
         </article>
         <div className="result-actions">
-          <button className="secondary-button" onClick={onFinish} type="button">Finalizar</button>
+          {ticket.notion.status === "ready" && ticket.notion.url && (
+            <a className="secondary-button" href={ticket.shortUrl} rel="noreferrer" target="_blank">Ver en Notion</a>
+          )}
+          <a className="secondary-button" href={`${ticket.shortUrl}?view=live`} rel="noreferrer" target="_blank">Ver ticket</a>
           <button className="primary-button" onClick={onCreateAnother} type="button"><span>Crear otro ticket</span><UiIcon name="plus" size={18} /></button>
         </div>
+        {ticket.notion.status === "failed" && <p className="form-error">El ticket se imprimió, pero no pudo sincronizarse con Notion.</p>}
+        <button className="text-link result-finish" onClick={onFinish} type="button">Finalizar</button>
       </div>
     </main>
   );

@@ -1,0 +1,61 @@
+steps:
+  - name: node:24-slim
+    id: notion-quality
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm --filter @printdesk/shared-models typecheck
+        pnpm --filter @printdesk/backend typecheck
+        pnpm --filter @printdesk/notion-service typecheck
+        pnpm --filter @printdesk/shared-models test
+        pnpm --filter @printdesk/backend test
+        pnpm --filter @printdesk/notion-service test
+
+  - name: gcr.io/cloud-builders/docker
+    id: notion-build
+    waitFor: [notion-quality]
+    args:
+      - build
+      - --file=apps/notion-service/Dockerfile
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-notion:$SHORT_SHA
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-notion:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    id: notion-push
+    waitFor: [notion-build]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-notion:$SHORT_SHA
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: notion-deploy
+    waitFor: [notion-push]
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE_NAME}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-notion:$SHORT_SHA
+      - --region=${_REGION}
+      - --project=$PROJECT_ID
+      - --platform=managed
+      - --quiet
+
+  - name: gcr.io/cloud-builders/docker
+    id: notion-latest
+    waitFor: [notion-deploy]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-notion:latest
+
+substitutions:
+  _REGION: europe-southwest1
+  _AR_REPOSITORY: printdesk
+  _SERVICE_NAME: printdesk-notion
+
+options:
+  logging: CLOUD_LOGGING_ONLY

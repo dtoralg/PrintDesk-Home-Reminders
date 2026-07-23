@@ -1,10 +1,13 @@
 import type { User } from "firebase/auth";
+import type { PrinterCheckView } from "@printdesk/shared-models";
 import type { AppSection } from "@/lib/web-types";
 import { UiIcon } from "./ui-icon";
 
 interface AppShellProps {
   active: AppSection;
   children: React.ReactNode;
+  pendingCount: number;
+  printerCheck: PrinterCheckView | null;
   user: User | null;
   onNavigate: (section: AppSection) => void;
 }
@@ -17,10 +20,20 @@ const navigation = [
   ["settings", "settings", "Ajustes"],
 ] as const;
 
-export function AppShell({ active, children, user, onNavigate }: AppShellProps) {
+export function AppShell({ active, children, pendingCount, printerCheck, user, onNavigate }: AppShellProps) {
   const firstName = user?.displayName?.split(" ")[0] ?? "Dani";
+  const checkResponded = printerCheck && ["available", "unavailable"].includes(printerCheck.status);
+  const agentLabel = checkResponded ? "Conectado" : printerCheck ? "Contactando" : "Configurado";
+  const printerLabel = printerCheck?.status === "available"
+    ? "Disponible"
+    : printerCheck?.status === "unavailable"
+      ? "No disponible"
+      : printerCheck
+        ? "Comprobando"
+        : "Configurada";
+  const dotClass = printerCheck?.status === "unavailable" ? "status-dot offline" : "status-dot";
   return (
-    <div className="app-frame">
+    <div className={`app-frame section-${active}`}>
       <aside className="sidebar">
         <button className="wordmark wordmark-button" onClick={() => onNavigate("home")} type="button">
           <UiIcon name="printer" size={23} />PrintDesk
@@ -34,11 +47,11 @@ export function AppShell({ active, children, user, onNavigate }: AppShellProps) 
         </nav>
         <div className="sidebar-status">
           <p className="micro-label">AGENTE PC</p>
-          <p><span className="status-dot" />Configurado</p>
-          <small>Tarea automática</small>
+          <p><span className="status-dot" />{agentLabel}</p>
+          <small>{checkResponded ? "Respuesta reciente" : "Tarea automática"}</small>
           <hr />
           <p className="micro-label">IMPRESORA CASA</p>
-          <p><span className="status-dot" />Configurada</p>
+          <p><span className={dotClass} />{printerLabel}</p>
           <small>TCP / 192.168.1.153</small>
         </div>
         <button className="profile-button" onClick={() => onNavigate("settings")} type="button">
@@ -51,6 +64,10 @@ export function AppShell({ active, children, user, onNavigate }: AppShellProps) 
       <header className="mobile-header">
         <button className="wordmark wordmark-button" onClick={() => onNavigate("home")} type="button">
           <UiIcon name="printer" size={20} />PrintDesk
+        </button>
+        <button aria-label="Notificaciones y pendientes" className="mobile-alert-button" onClick={() => onNavigate("history")} type="button">
+          <UiIcon name="bell" size={19} />
+          {pendingCount > 0 && <span>{pendingCount}</span>}
         </button>
       </header>
 

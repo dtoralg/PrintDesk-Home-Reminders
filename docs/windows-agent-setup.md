@@ -19,22 +19,35 @@ Todos los recursos pertenecen al proyecto `printdesk-503214`.
    - Retry policy: `Retry after exponential backoff`, mínimo `10` y máximo
      `600` segundos.
    - Sin filtro, exactly-once ni ordering. Firestore hace idempotente el claim.
-3. En **IAM & Admin > Service Accounts**, crea `printdesk-agent`.
-4. En **IAM**, concede a `printdesk-agent` el rol
+3. Crea el topic `printer-check-requested` sin suscripción predeterminada,
+   esquema, retención ni transformaciones.
+4. Dentro de ese topic crea la suscripción pull `home-printer-checks`:
+   - Delivery type: `Pull`.
+   - Message retention: `1 day`.
+   - Expiration: `Never expires`.
+   - Acknowledgement deadline: `30 seconds`.
+   - Retry policy: exponential backoff, mínimo `10` y máximo `60` segundos.
+   - Sin filtro, exactly-once ni ordering.
+5. En **IAM & Admin > Service Accounts**, crea `printdesk-agent`.
+6. En **IAM**, concede a `printdesk-agent` el rol
    **Pub/Sub Subscriber**. El API no le concede acceso a Firestore ni Storage.
-5. En el topic `print-job-ready`, concede **Pub/Sub Publisher** a la cuenta de
+   Si ese rol ya está concedido a nivel de proyecto, cubre ambas suscripciones.
+7. En el topic `print-job-ready`, concede **Pub/Sub Publisher** a la cuenta de
    servicio usada por `printdesk-render`.
-6. Edita `printdesk-render` y añade:
+8. En `printer-check-requested`, concede **Pub/Sub Publisher** a
+   `printdesk-api`, salvo que ya tenga ese rol a nivel de proyecto.
+9. Edita `printdesk-render` y añade:
 
    ```text
    PRINTDESK_PRINT_JOB_READY_TOPIC=print-job-ready
    ```
 
-7. Edita `printdesk-api` y añade:
+10. Edita `printdesk-api` y añade:
 
    ```text
    PRINTDESK_AGENT_SERVICE_ACCOUNT=printdesk-agent@printdesk-503214.iam.gserviceaccount.com
    PRINTDESK_DEVICE_TOKEN_AUDIENCE=https://printdesk-api-128063282321.europe-southwest1.run.app
+   PRINTDESK_PRINTER_CHECK_TOPIC=printer-check-requested
    ```
 
 Cada cambio de variables crea una revisión; selecciona las imágenes ya
@@ -99,6 +112,20 @@ La configuración editable queda en
 `C:\ProgramData\PrintDesk\config.json`. Para aplicar un cambio, reinicia la
 tarea desde el Programador de tareas o reinicia Windows.
 
+El ejecutable nuevo usa `home-printer-checks` por defecto aunque el
+`config.json` instalado anteriormente no contenga esa propiedad. También puedes
+dejarla explícita:
+
+```json
+{
+  "printerCheckSubscriptionId": "home-printer-checks"
+}
+```
+
+Después de incorporar una versión nueva del agente hay que volver a construir
+el `.exe` y ejecutar el instalador; el instalador conserva credenciales,
+configuración, logs y spool existentes.
+
 Para desinstalar solo el autoarranque, sin borrar credenciales, configuración,
 logs ni trabajos conservados:
 
@@ -114,6 +141,7 @@ Desde la raíz del repositorio:
 $env:GOOGLE_APPLICATION_CREDENTIALS = "C:\ProgramData\PrintDesk\credentials.json"
 $env:GOOGLE_CLOUD_PROJECT = "printdesk-503214"
 $env:PRINTDESK_AGENT_SUBSCRIPTION = "home-print-agent"
+$env:PRINTDESK_PRINTER_CHECK_SUBSCRIPTION = "home-printer-checks"
 $env:PRINTDESK_API_BASE_URL = "https://printdesk-api-128063282321.europe-southwest1.run.app"
 $env:PRINTDESK_DEVICE_TOKEN_AUDIENCE = "https://printdesk-api-128063282321.europe-southwest1.run.app"
 $env:PRINTDESK_PRINTER_ID = "home"

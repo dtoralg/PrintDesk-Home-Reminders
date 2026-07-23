@@ -2,7 +2,7 @@
 
 Este recorrido prueba el mismo payload ESC/POS y el mismo transporte TCP que
 usará la impresora. La única sustitución es el destino: un servidor local guarda
-los bytes en vez de calentarlos en el cabezal tÃ©rmico.
+los bytes en vez de calentarlos en el cabezal térmico.
 
 ## Prueba automatizada
 
@@ -16,7 +16,7 @@ lo renderiza, lo reclama, lo transmite por TCP, captura el spool y comprueba:
 - inicialización ESC/POS;
 - raster monocromo de 576 px;
 - longitud completa de la imagen;
-- avance de tres lÃ­neas y orden de corte;
+- avance de tres líneas y orden de corte;
 - igualdad byte a byte entre artefacto, spool y datos recibidos;
 - estado final `printed_simulated` sin duplicar el comando.
 
@@ -56,7 +56,7 @@ y el agente completa el trabajo como `printed`.
 
 No hace falta instalar un driver de Windows: PrintDesk envía ESC/POS RAW
 directamente por TCP. Esto presupone que el modelo admite ESC/POS, raster
-`GS v 0` y corte `GS V 0`; al llegar la impresora se confirmarÃ¡ con su manual.
+`GS v 0` y corte `GS V 0`; al llegar la impresora se confirmará con su manual.
 
 ## Seguridad ante duplicados
 

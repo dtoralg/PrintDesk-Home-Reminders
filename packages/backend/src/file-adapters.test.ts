@@ -88,4 +88,90 @@ describe("FileRepository", () => {
     expect(await repository.beginRender(graph.event)).not.toBeNull();
     expect(await repository.getJob(graph.job.jobId)).toMatchObject({ status: "rendering", error: "storage_unavailable" });
   });
+
+  it("persiste cada estado real del agente hasta completar la impresión", async () => {
+    const repository = new FileRepository(directory);
+    await repository.createRequestGraph(graph);
+    await repository.beginRender(graph.event);
+    await repository.completeRender(graph.job.jobId, graph.event.eventId, {
+      previewPath: "preview",
+      escposPath: "escpos",
+    });
+
+    await expect(repository.claimJob(graph.job.jobId)).resolves.toMatchObject({ status: "claimed" });
+    await expect(repository.updatePrintStatus(graph.job.jobId, "checking_printer")).resolves.toMatchObject({
+      status: "checking_printer",
+    });
+    await expect(repository.updatePrintStatus(graph.job.jobId, "printing")).resolves.toMatchObject({
+      status: "printing",
+    });
+    await expect(repository.completePrint(graph.job.jobId, "printed")).resolves.toMatchObject({ status: "printed" });
+  });
+
+  it("mantiene una copia unilateral de Notion idempotente", async () => {
+    const repository = new FileRepository(directory);
+    await repository.createRequestGraph(graph);
+    await expect(repository.beginNotionSync(graph.event)).resolves.toMatchObject({
+      request: { requestId: graph.request.requestId },
+      sync: { status: "syncing", leaseEventId: graph.event.eventId },
+    });
+    await expect(repository.completeNotionSync(graph.request.requestId, graph.event.eventId, {
+      pageId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      pageUrl: "https://www.notion.so/page",
+    })).resolves.toMatchObject({ status: "ready", pageUrl: "https://www.notion.so/page" });
+    await expect(repository.beginNotionSync(graph.event)).resolves.toBeNull();
+  });
+
+  it("lista únicamente las solicitudes del propietario con su trabajo", async () => {
+    const repository = new FileRepository(directory);
+    await repository.createRequestGraph(graph);
+    const foreign = {
+      ...graph,
+      commandId: "command-foreign",
+      request: {
+        ...graph.request,
+        requestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        createdBy: { uid: "other", displayName: "Other", email: "other@example.com" },
+      },
+      job: {
+        ...graph.job,
+        jobId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        requestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      },
+    };
+    await repository.createRequestGraph(foreign);
+
+    const history = await repository.listRequestsByOwner("local", 20);
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({
+      request: { requestId: graph.request.requestId },
+      job: { jobId: graph.job.jobId },
+    });
+  });
+
+  it("conserva el ciclo de vida de una comprobación de impresora", async () => {
+    const repository = new FileRepository(directory);
+    const now = new Date().toISOString();
+    const check = {
+      checkId: "55555555-5555-4555-8555-555555555555",
+      printerId: "home",
+      requestedBy: graph.request.createdBy,
+      status: "pending",
+      error: null,
+      requestedAt: now,
+      updatedAt: now,
+    } as const;
+
+    await repository.createPrinterCheck(check);
+    await expect(repository.claimPrinterCheck(check.checkId)).resolves.toMatchObject({ status: "checking" });
+    await expect(repository.completePrinterCheck(check.checkId, true, null)).resolves.toMatchObject({
+      status: "available",
+      error: null,
+    });
+    await expect(repository.getLatestPrinterCheck(check.requestedBy.uid, "home")).resolves.toMatchObject({
+      checkId: check.checkId,
+      status: "available",
+    });
+    await expect(repository.claimPrinterCheck(check.checkId)).resolves.toBeNull();
+  });
 });

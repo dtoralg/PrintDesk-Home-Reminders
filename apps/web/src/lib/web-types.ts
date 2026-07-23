@@ -1,4 +1,4 @@
-import type { PrintJobView, RequestInput } from "@printdesk/shared-models";
+import type { NotionSyncView, PrintJobView, RequestInput } from "@printdesk/shared-models";
 
 export type AppSection = "home" | "compose" | "history" | "printer" | "settings";
 
@@ -11,11 +11,13 @@ export interface ActiveTicket {
   shortUrl: string;
   draft: TicketDraft;
   job: PrintJobView;
+  notion: NotionSyncView;
 }
 
 export interface RecentTicket {
   requestId: string;
   jobId: string;
+  shortUrl?: string;
   title: string;
   type: RequestInput["type"];
   status: PrintJobView["status"];

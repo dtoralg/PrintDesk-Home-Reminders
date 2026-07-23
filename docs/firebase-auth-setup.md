@@ -39,7 +39,7 @@ privada. No descargues claves JSON ni credenciales de cuentas de servicio.
 3. Abre **Firestore Database > Data** y crea la colección:
 
    ```text
-   authorized_users
+   authorized-users
    ```
 
 4. Usa el UID exacto como **Document ID** y crea estos campos:
@@ -99,7 +99,7 @@ usa **Edit & deploy new revision** para establecer `PRINTDESK_PUBLIC_BASE_URL`.
 
 - `GET /health` responde 200 sin token y solo expone estado básico.
 - `POST /v1/requests` sin token responde 401.
-- Un usuario de Firebase que no esté en `authorized_users` recibe 401.
+- Un usuario de Firebase que no esté en `authorized-users` recibe 401.
 - Un usuario habilitado puede crear el ticket y Pub/Sub entrega el evento al
   renderer privado.
 

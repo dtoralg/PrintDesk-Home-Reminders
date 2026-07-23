@@ -72,6 +72,57 @@ export type PrintJobReadyEvent = z.infer<typeof printJobReadyEventSchema>;
 export interface CreateRequestResult {
   requestId: string;
   job: PrintJobView;
+  notion: NotionSyncView;
   shortCode: string;
   shortUrl: string;
 }
+
+export const notionSyncStatusSchema = z.enum(["pending", "syncing", "ready", "failed"]);
+export type NotionSyncStatus = z.infer<typeof notionSyncStatusSchema>;
+
+export interface NotionSyncView {
+  status: NotionSyncStatus;
+  url: string | null;
+  error: string | null;
+  updatedAt: string | null;
+}
+
+export interface RequestStateResult {
+  requestId: string;
+  job: PrintJobView;
+  notion: NotionSyncView;
+  shortUrl: string;
+}
+
+export interface RequestHistoryItem {
+  requestId: string;
+  shortUrl: string;
+  request: RequestInput;
+  createdAt: string;
+  job: PrintJobView;
+  notion: NotionSyncView;
+}
+
+export interface RequestHistoryResult {
+  items: RequestHistoryItem[];
+}
+
+export const printerCheckStatusSchema = z.enum(["pending", "checking", "available", "unavailable"]);
+export type PrinterCheckStatus = z.infer<typeof printerCheckStatusSchema>;
+
+export interface PrinterCheckView {
+  checkId: string;
+  printerId: string;
+  status: PrinterCheckStatus;
+  error: string | null;
+  requestedAt: string;
+  updatedAt: string;
+}
+
+export const printerCheckRequestedEventSchema = z.object({
+  eventId: z.uuid(),
+  checkId: z.uuid(),
+  printerId: z.string().trim().min(1).max(80),
+  occurredAt: z.iso.datetime({ offset: true }),
+});
+export type PrinterCheckRequestedEvent = z.infer<typeof printerCheckRequestedEventSchema>;

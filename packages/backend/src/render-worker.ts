@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RequestCreatedEvent } from "@printdesk/shared-models";
+import type { StoredRequest } from "./domain.js";
 import type { ArtifactStore, EventPublisher, PrintDeskRepository, PrintJobReadyPublisher } from "./ports.js";
 
 const rendererSource = process.env.PRINTDESK_RENDERER_SOURCE
@@ -19,9 +20,18 @@ function pythonExecutable() {
   return "python";
 }
 
-async function render(request: { input: unknown; shortUrl: string }, directory: string) {
+export function rendererPayload(request: StoredRequest) {
+  return {
+    request: request.input,
+    shortUrl: request.shortUrl,
+    createdBy: request.createdBy,
+    createdAt: request.createdAt,
+  };
+}
+
+async function render(request: StoredRequest, directory: string) {
   const input = join(directory, "render-input.json");
-  await writeFile(input, JSON.stringify({ request: request.input, shortUrl: request.shortUrl }), "utf8");
+  await writeFile(input, JSON.stringify(rendererPayload(request)), "utf8");
   const executable = pythonExecutable();
   await new Promise<void>((resolve, reject) => {
     const child = spawn(executable, ["-m", "printdesk_renderer.renderer", "--input", input, "--output", directory], {

@@ -28,6 +28,7 @@ describe("Windows agent configuration", () => {
     delete process.env.PRINTDESK_CONFIG;
     delete process.env.GOOGLE_CLOUD_PROJECT;
     delete process.env.PRINTDESK_AGENT_SUBSCRIPTION;
+    delete process.env.PRINTDESK_PRINTER_CHECK_SUBSCRIPTION;
     delete process.env.PRINTDESK_API_BASE_URL;
     delete process.env.PRINTDESK_DEVICE_TOKEN_AUDIENCE;
     delete process.env.PRINTDESK_PRINTER_ID;
@@ -40,6 +41,7 @@ describe("Windows agent configuration", () => {
     expect(loadAgentConfig()).toEqual({
       projectId: "project",
       subscriptionId: "subscription",
+      printerCheckSubscriptionId: "home-printer-checks",
       apiBaseUrl: "https://api.example.test",
       audience: "https://api.example.test",
       printerId: "home",
