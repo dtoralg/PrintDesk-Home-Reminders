@@ -9,6 +9,14 @@ const event = {
 };
 
 describe("Pub/Sub push endpoint", () => {
+  it("expone un endpoint de salud compatible con Cloud Run", async () => {
+    const app = buildRenderApp({ handle: vi.fn() });
+    const response = await app.inject({ method: "GET", url: "/health" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ status: "ok" });
+    await app.close();
+  });
+
   it("decodifica y entrega un evento válido", async () => {
     const handle = vi.fn().mockResolvedValue("rendered");
     const app = buildRenderApp({ handle });

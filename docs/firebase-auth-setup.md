@@ -97,9 +97,8 @@ usa **Edit & deploy new revision** para establecer `PRINTDESK_PUBLIC_BASE_URL`.
 
 ## 5. Comprobación
 
-- `GET /healthz` responde 200 sin token y solo expone estado básico.
+- `GET /health` responde 200 sin token y solo expone estado básico.
 - `POST /v1/requests` sin token responde 401.
 - Un usuario de Firebase que no esté en `authorized_users` recibe 401.
 - Un usuario habilitado puede crear el ticket y Pub/Sub entrega el evento al
   renderer privado.
-

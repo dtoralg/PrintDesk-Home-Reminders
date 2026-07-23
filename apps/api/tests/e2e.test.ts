@@ -24,6 +24,10 @@ describe("vertical local", () => {
     const address = app.server.address() as AddressInfo;
     const apiBase = `http://127.0.0.1:${address.port}`;
 
+    const health = await fetch(`${apiBase}/health`);
+    expect(health.status).toBe(200);
+    expect(await health.json()).toEqual({ status: "ok", backend: "local" });
+
     const created = await fetch(`${apiBase}/v1/requests`, {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": "e2e-command-0001" },

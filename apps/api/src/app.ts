@@ -58,7 +58,7 @@ export async function buildApp(options: AppOptions = {}) {
     return storedRequest?.createdBy.uid === uid ? job : null;
   }
 
-  app.get("/healthz", async () => ({ status: "ok", backend: process.env.PRINTDESK_BACKEND ?? "local" }));
+  app.get("/health", async () => ({ status: "ok", backend: process.env.PRINTDESK_BACKEND ?? "local" }));
 
   app.post("/v1/requests", async (request, reply) => {
     let actor;
