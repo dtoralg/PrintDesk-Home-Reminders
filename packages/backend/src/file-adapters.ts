@@ -60,6 +60,10 @@ export class FileRepository implements PrintDeskRepository {
     return (await this.load()).jobs[jobId] ?? null;
   }
 
+  async getRequest(requestId: string) {
+    return (await this.load()).requests[requestId] ?? null;
+  }
+
   beginRender(event: RequestCreatedEvent) {
     return this.locked(async (state) => {
       const job = state.jobs[event.jobId];

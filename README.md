@@ -21,6 +21,8 @@ Consulta [la arquitectura](docs/architecture.md), [el plan](docs/implementation-
 [la configuración mediante Google Cloud Console](docs/gcp-console-setup.md) y
 [las pruebas con emuladores](docs/local-emulators.md). Para validar la impresión
 antes de tener hardware, sigue [las pruebas en seco por TCP 9100](docs/dry-run-printing.md).
+La identidad de producción se configura con
+[Firebase Auth y una allowlist](docs/firebase-auth-setup.md).
 
 ## Puesta en marcha local
 

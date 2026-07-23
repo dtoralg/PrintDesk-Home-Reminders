@@ -28,6 +28,11 @@ export class FirestoreRepository implements PrintDeskRepository {
     return snapshot.exists ? (snapshot.data() as StoredPrintJob) : null;
   }
 
+  async getRequest(requestId: string) {
+    const snapshot = await this.db().doc(`requests/${requestId}`).get();
+    return snapshot.exists ? (snapshot.data() as StoredRequest) : null;
+  }
+
   beginRender(event: RequestCreatedEvent) {
     return this.db().runTransaction(async (transaction) => {
       const jobRef = this.db().doc(`print_jobs/${event.jobId}`);

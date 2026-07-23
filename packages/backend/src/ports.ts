@@ -5,10 +5,12 @@ import type {
   RenderWork,
   RequestGraph,
   StoredPrintJob,
+  StoredRequest,
 } from "./domain.js";
 
 export interface PrintDeskRepository {
   createRequestGraph(graph: RequestGraph): Promise<CreatedGraph>;
+  getRequest(requestId: string): Promise<StoredRequest | null>;
   getJob(jobId: string): Promise<StoredPrintJob | null>;
   beginRender(event: RequestCreatedEvent): Promise<RenderWork | null>;
   completeRender(jobId: string, eventId: string, artifacts: ArtifactPaths): Promise<StoredPrintJob>;

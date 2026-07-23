@@ -169,22 +169,16 @@ Cuando exista una imagen de `printdesk-render` en Artifact Registry:
 No habilites payload unwrapping: `render-service` valida el sobre estándar
 `message.data` de Pub/Sub.
 
-## 9. Cloud Run: API
+## 9. Firebase Auth, allowlist y Cloud Run: API
 
-No despliegues `printdesk-api` públicamente hasta completar Firebase Auth y la
-allowlist. El código de producción rechaza deliberadamente todas las solicitudes
-sin identidad verificada. Cuando implementemos ese milestone, se creará desde
-la consola con la cuenta `printdesk-api` y estas variables:
+El código ya verifica el ID token de Firebase y exige
+`authorized_users/{uid}.enabled == true`. Activa Google Sign-In, crea el primer
+usuario autorizado y despliega `printdesk-api` siguiendo la guía completa
+`docs/firebase-auth-setup.md`.
 
-```text
-NODE_ENV=production
-PRINTDESK_BACKEND=gcp
-GOOGLE_CLOUD_PROJECT=<PROJECT_ID>
-PRINTDESK_FIRESTORE_DATABASE=(default)
-PRINTDESK_STORAGE_BUCKET=<BUCKET>
-PRINTDESK_REQUEST_CREATED_TOPIC=request-created
-PRINTDESK_PUBLIC_BASE_URL=<URL_API>
-```
+La API usa **Allow public access** en Cloud Run para que los ID tokens de usuarios
+finales lleguen al contenedor. Todas las operaciones de usuario siguen protegidas
+por Firebase y la allowlist. `printdesk-render` permanece privado mediante IAM.
 
 ## Comprobación visual
 

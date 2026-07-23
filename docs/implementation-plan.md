@@ -26,8 +26,9 @@ desde la consola siguiendo `docs/gcp-console-setup.md`.
 
 ## Milestone 3 — identidad y experiencia
 
-- Firebase Auth con Google y allowlist `authorized_users/{uid}`.
-- Sesión PWA, historial, detalle y seguimiento autenticado.
+- Firebase Auth con Google y allowlist `authorized_users/{uid}` (implementado).
+- Sesión PWA y seguimiento autenticado del job (implementado).
+- Historial y detalle de solicitudes.
 - Health check bajo demanda con TTL de dos minutos.
 
 ## Milestone 4 — impresora y agente

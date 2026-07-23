@@ -51,6 +51,13 @@ export async function buildApp(options: AppOptions = {}) {
   const events = options.events ?? defaults!.events;
   const baseUrl = options.publicBaseUrl ?? process.env.PRINTDESK_PUBLIC_BASE_URL ?? "http://localhost:8080";
 
+  async function ownedJob(jobId: string, uid: string) {
+    const job = await repository.getJob(jobId);
+    if (!job) return null;
+    const storedRequest = await repository.getRequest(job.requestId);
+    return storedRequest?.createdBy.uid === uid ? job : null;
+  }
+
   app.get("/healthz", async () => ({ status: "ok", backend: process.env.PRINTDESK_BACKEND ?? "local" }));
 
   app.post("/v1/requests", async (request, reply) => {
@@ -126,25 +133,29 @@ export async function buildApp(options: AppOptions = {}) {
   });
 
   app.get("/v1/print-jobs/:jobId", async (request, reply) => {
+    let actor;
     try {
-      await authenticate(request.headers.authorization);
+      actor = await authenticate(request.headers.authorization);
     } catch {
       return reply.code(401).send({ error: "unauthorized" });
     }
     const parsed = idSchema.safeParse((request.params as { jobId: string }).jobId);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_job_id" });
-    const job = await repository.getJob(parsed.data);
+    const job = await ownedJob(parsed.data, actor.uid);
     if (!job) return reply.code(404).send({ error: "not_found" });
     return view(job, baseUrl);
   });
 
   app.get("/v1/print-jobs/:jobId/preview", async (request, reply) => {
-    if (process.env.PRINTDESK_ALLOW_DEV_AUTH !== "true" || process.env.NODE_ENV === "production") {
-      return reply.code(403).send({ error: "signed_preview_required" });
+    let actor;
+    try {
+      actor = await authenticate(request.headers.authorization);
+    } catch {
+      return reply.code(401).send({ error: "unauthorized" });
     }
     const parsed = idSchema.safeParse((request.params as { jobId: string }).jobId);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_job_id" });
-    const job = await repository.getJob(parsed.data);
+    const job = await ownedJob(parsed.data, actor.uid);
     if (!job?.previewPath) return reply.code(404).send({ error: "not_found" });
     return reply.type("image/png").send(await artifacts.read(job.previewPath));
   });

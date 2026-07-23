@@ -13,6 +13,8 @@ button,input,textarea { font:inherit; }
 .hero { max-width:900px; padding:64px 0 48px; }
 .hero h1 { font-size:clamp(52px,8vw,96px); line-height:.9; letter-spacing:-.075em; margin:18px 0 24px; }
 .hero > p:last-child { max-width:560px; color:var(--muted); line-height:1.5; }
+.auth-strip { min-height:48px; margin-bottom:16px; padding:10px 14px; border:1px solid var(--ink); display:flex; align-items:center; justify-content:space-between; gap:16px; font:12px "Courier New",monospace; letter-spacing:.06em; }
+.auth-strip button { border:1px solid var(--ink); background:var(--ink); color:var(--paper); padding:8px 12px; cursor:pointer; }
 .composer-grid { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(340px,.8fr); gap:24px; align-items:start; }
 .composer-card,.preview-panel { border:2px solid var(--ink); background:rgba(255,255,255,.18); padding:28px; }
 .field-label { display:flex; gap:14px; margin:20px 0 8px; }.field-label:first-child { margin-top:0; }.field-label span,legend span { color:var(--muted); }
