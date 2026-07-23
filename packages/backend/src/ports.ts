@@ -1,4 +1,4 @@
-import type { PrintJobStatus, RequestCreatedEvent } from "@printdesk/shared-models";
+import type { PrintJobReadyEvent, PrintJobStatus, RequestCreatedEvent } from "@printdesk/shared-models";
 import type {
   ArtifactPaths,
   CreatedGraph,
@@ -27,4 +27,8 @@ export interface ArtifactStore {
 
 export interface EventPublisher {
   publish(event: RequestCreatedEvent): Promise<string>;
+}
+
+export interface PrintJobReadyPublisher {
+  publish(event: PrintJobReadyEvent): Promise<string>;
 }

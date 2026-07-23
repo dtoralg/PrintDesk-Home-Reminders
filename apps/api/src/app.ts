@@ -16,6 +16,7 @@ import {
   type PrintJobView,
 } from "@printdesk/shared-models";
 import { authenticate } from "./auth.js";
+import { productionDeviceAuthenticator, type DeviceAuthenticator } from "./device-auth.js";
 
 export interface AppOptions {
   dataDir?: string;
@@ -23,6 +24,7 @@ export interface AppOptions {
   repository?: PrintDeskRepository;
   artifacts?: ArtifactStore;
   events?: EventPublisher;
+  deviceAuthenticator?: DeviceAuthenticator;
 }
 
 const idSchema = z.uuid();
@@ -50,6 +52,17 @@ export async function buildApp(options: AppOptions = {}) {
   const artifacts = options.artifacts ?? defaults!.artifacts;
   const events = options.events ?? defaults!.events;
   const baseUrl = options.publicBaseUrl ?? process.env.PRINTDESK_PUBLIC_BASE_URL ?? "http://localhost:8080";
+  const deviceAuthenticator = options.deviceAuthenticator ?? productionDeviceAuthenticator();
+
+  async function authorizeDevice(authorization: string | undefined) {
+    if (process.env.PRINTDESK_ALLOW_DEV_AUTH === "true" && process.env.NODE_ENV !== "production") return true;
+    try {
+      await deviceAuthenticator.authenticate(authorization);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   async function ownedJob(jobId: string, uid: string) {
     const job = await repository.getJob(jobId);
@@ -161,7 +174,7 @@ export async function buildApp(options: AppOptions = {}) {
   });
 
   app.post("/v1/print-jobs/:jobId/claim", async (request, reply) => {
-    if (process.env.PRINTDESK_ALLOW_DEV_AUTH !== "true" || process.env.NODE_ENV === "production") return reply.code(403).send({ error: "device_auth_required" });
+    if (!await authorizeDevice(request.headers.authorization)) return reply.code(401).send({ error: "device_auth_required" });
     const parsed = idSchema.safeParse((request.params as { jobId: string }).jobId);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_job_id" });
     const job = await repository.claimJob(parsed.data);
@@ -170,7 +183,7 @@ export async function buildApp(options: AppOptions = {}) {
   });
 
   app.get("/v1/print-jobs/:jobId/artifact", async (request, reply) => {
-    if (process.env.PRINTDESK_ALLOW_DEV_AUTH !== "true" || process.env.NODE_ENV === "production") return reply.code(403).send({ error: "device_auth_required" });
+    if (!await authorizeDevice(request.headers.authorization)) return reply.code(401).send({ error: "device_auth_required" });
     const parsed = idSchema.safeParse((request.params as { jobId: string }).jobId);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_job_id" });
     const job = await repository.getJob(parsed.data);
@@ -179,7 +192,7 @@ export async function buildApp(options: AppOptions = {}) {
   });
 
   app.post("/v1/print-jobs/:jobId/complete", async (request, reply) => {
-    if (process.env.PRINTDESK_ALLOW_DEV_AUTH !== "true" || process.env.NODE_ENV === "production") return reply.code(403).send({ error: "device_auth_required" });
+    if (!await authorizeDevice(request.headers.authorization)) return reply.code(401).send({ error: "device_auth_required" });
     const parsed = idSchema.safeParse((request.params as { jobId: string }).jobId);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_job_id" });
     const body = z.object({ outcome: z.enum(["printed", "printed_simulated"]) }).safeParse(request.body);
@@ -190,7 +203,7 @@ export async function buildApp(options: AppOptions = {}) {
   });
 
   app.post("/v1/print-jobs/:jobId/fail", async (request, reply) => {
-    if (process.env.PRINTDESK_ALLOW_DEV_AUTH !== "true" || process.env.NODE_ENV === "production") return reply.code(403).send({ error: "device_auth_required" });
+    if (!await authorizeDevice(request.headers.authorization)) return reply.code(401).send({ error: "device_auth_required" });
     const parsed = idSchema.safeParse((request.params as { jobId: string }).jobId);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_job_id" });
     const body = z.object({ error: z.string().trim().min(1).max(500), retryable: z.boolean() }).safeParse(request.body);

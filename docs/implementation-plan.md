@@ -33,10 +33,12 @@ desde la consola siguiendo `docs/gcp-console-setup.md`.
 
 ## Milestone 4 — impresora y agente
 
-- Suscripción StreamingPull, lease idempotente y cola persistente.
+- Suscripción StreamingPull, evento `print-job.ready`, identidad Google del
+  dispositivo, lease idempotente y cola persistente (implementado).
 - Transporte TCP 9100 con timeout y reintentos seguros antes del envío (implementado).
 - Impresora virtual, captura byte a byte y validador ESC/POS (implementado).
-- Prueba física de raster, caracteres, QR, avance y corte.
+- Prueba física de TCP 9100, avance y corte en PcCom Essential
+  `PCCES-TIP-U1W1B0L0-B` (implementado).
 
 ## Milestone 5 — Vertex AI y Notion
 

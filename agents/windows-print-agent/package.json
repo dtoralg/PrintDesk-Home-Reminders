@@ -5,11 +5,17 @@
   "type": "module",
   "exports": "./src/index.ts",
   "scripts": {
+    "agent": "tsx src/subscriber-cli.ts",
     "dev": "tsx src/cli.ts",
     "print:tcp": "tsx src/tcp-cli.ts",
     "virtual-printer": "tsx src/virtual-printer-cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@google-cloud/pubsub": "^4.11.0",
+    "@printdesk/shared-models": "workspace:*",
+    "google-auth-library": "^10.2.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

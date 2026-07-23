@@ -1,8 +1,8 @@
 import { PubSub } from "@google-cloud/pubsub";
 import { getApps, initializeApp, type App } from "firebase-admin/app";
 import { getStorage } from "firebase-admin/storage";
-import type { RequestCreatedEvent } from "@printdesk/shared-models";
-import type { ArtifactStore, EventPublisher } from "./ports.js";
+import type { PrintJobReadyEvent, RequestCreatedEvent } from "@printdesk/shared-models";
+import type { ArtifactStore, EventPublisher, PrintJobReadyPublisher } from "./ports.js";
 
 export class PubSubEventPublisher implements EventPublisher {
   private client: PubSub | undefined;
@@ -16,6 +16,26 @@ export class PubSubEventPublisher implements EventPublisher {
     return this.pubsub().topic(this.topicId).publishMessage({
       json: event,
       attributes: { eventType: "request.created", schemaVersion: "1" },
+    });
+  }
+}
+
+export class PubSubPrintJobReadyPublisher implements PrintJobReadyPublisher {
+  private client: PubSub | undefined;
+  constructor(private readonly projectId: string, private readonly topicId: string) {}
+
+  private pubsub() {
+    return (this.client ??= new PubSub({ projectId: this.projectId }));
+  }
+
+  publish(event: PrintJobReadyEvent) {
+    return this.pubsub().topic(this.topicId).publishMessage({
+      json: event,
+      attributes: {
+        eventType: "print-job.ready",
+        schemaVersion: "1",
+        printerId: event.printerId,
+      },
     });
   }
 }

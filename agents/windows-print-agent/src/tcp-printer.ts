@@ -10,6 +10,8 @@ export interface TcpPrinterOptions {
   connectTimeoutMs?: number;
   deliveryTimeoutMs?: number;
   connectAttempts?: number;
+  settleBeforeCutMs?: number;
+  settleAfterWriteMs?: number;
 }
 
 export class PrinterDeliveryError extends Error {
@@ -32,6 +34,13 @@ function connect(options: Required<TcpPrinterOptions>) {
   });
 }
 
+function findCutCommand(bytes: Uint8Array) {
+  for (let index = bytes.length - 2; index >= 0; index -= 1) {
+    if (bytes[index] === 0x1d && bytes[index + 1] === 0x56) return index;
+  }
+  return -1;
+}
+
 export class Tcp9100Printer implements PrintTransport {
   private readonly options: Required<TcpPrinterOptions>;
 
@@ -42,6 +51,8 @@ export class Tcp9100Printer implements PrintTransport {
       connectTimeoutMs: options.connectTimeoutMs ?? 2_000,
       deliveryTimeoutMs: options.deliveryTimeoutMs ?? 10_000,
       connectAttempts: options.connectAttempts ?? 3,
+      settleBeforeCutMs: options.settleBeforeCutMs ?? 1_500,
+      settleAfterWriteMs: options.settleAfterWriteMs ?? 500,
     };
   }
 
@@ -65,12 +76,27 @@ export class Tcp9100Printer implements PrintTransport {
         clearTimeout(timer);
         reject(new PrinterDeliveryError("printer_delivery_failed", deliveryStarted, { cause: error }));
       });
-      socket.once("close", (hadError) => {
-        clearTimeout(timer);
-        if (!hadError) resolve();
+      const write = (chunk: Uint8Array) => new Promise<void>((writeResolve, writeReject) => {
+        socket!.write(chunk, (error) => error ? writeReject(error) : writeResolve());
       });
+      const delay = (milliseconds: number) => new Promise((delayResolve) => setTimeout(delayResolve, milliseconds));
+      const cutIndex = findCutCommand(bytes);
+      const printBytes = cutIndex >= 0 ? bytes.subarray(0, cutIndex) : bytes;
+      const cutBytes = cutIndex >= 0 ? bytes.subarray(cutIndex) : new Uint8Array();
+
       deliveryStarted = true;
-      socket.end(bytes);
+      void (async () => {
+        await write(printBytes);
+        if (cutBytes.length > 0) {
+          await delay(this.options.settleBeforeCutMs);
+          await write(cutBytes);
+        }
+        await delay(this.options.settleAfterWriteMs);
+        socket!.end(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      })().catch((error) => socket!.destroy(error instanceof Error ? error : new Error("printer_delivery_failed")));
     });
   }
 }

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RequestCreatedEvent } from "@printdesk/shared-models";
-import type { ArtifactStore, EventPublisher, PrintDeskRepository } from "./ports.js";
+import type { ArtifactStore, EventPublisher, PrintDeskRepository, PrintJobReadyPublisher } from "./ports.js";
 
 const rendererSource = process.env.PRINTDESK_RENDERER_SOURCE
   ?? fileURLToPath(new URL("../../../packages/ticket-renderer/src", import.meta.url));
@@ -40,16 +40,34 @@ async function render(request: { input: unknown; shortUrl: string }, directory: 
 }
 
 export class RenderWorker {
-  constructor(private readonly repository: PrintDeskRepository, private readonly artifacts: ArtifactStore) {}
+  constructor(
+    private readonly repository: PrintDeskRepository,
+    private readonly artifacts: ArtifactStore,
+    private readonly readyEvents?: PrintJobReadyPublisher,
+  ) {}
+
+  private publishReady(job: { jobId: string; printerId: string; updatedAt: string }) {
+    return this.readyEvents?.publish({
+      eventId: job.jobId,
+      jobId: job.jobId,
+      printerId: job.printerId,
+      occurredAt: job.updatedAt,
+    });
+  }
 
   async handle(event: RequestCreatedEvent): Promise<"rendered" | "duplicate"> {
     const work = await this.repository.beginRender(event);
-    if (!work) return "duplicate";
+    if (!work) {
+      const existing = await this.repository.getJob(event.jobId);
+      if (existing?.status === "queued") await this.publishReady(existing);
+      return "duplicate";
+    }
     const directory = await mkdtemp(join(tmpdir(), "printdesk-render-"));
     try {
       const [preview, escpos] = await render(work.request, directory);
       const paths = await this.artifacts.put(work.request.requestId, preview, escpos);
-      await this.repository.completeRender(work.job.jobId, event.eventId, paths);
+      const completed = await this.repository.completeRender(work.job.jobId, event.eventId, paths);
+      await this.publishReady(completed);
       return "rendered";
     } catch (error) {
       await this.repository.failRender(work.job.jobId, event.eventId, (error as Error).message);

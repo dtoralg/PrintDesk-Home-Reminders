@@ -16,16 +16,27 @@ export interface RunPrintJobOptions {
   spoolDirectory?: string;
   transport?: PrintTransport;
   simulated: boolean;
+  authorization?: () => Promise<string>;
 }
 
-async function reportFailure(base: string, jobId: string, error: unknown, deliveryAttempted: boolean) {
+async function authHeaders(options: RunPrintJobOptions) {
+  return options.authorization ? { authorization: await options.authorization() } : {};
+}
+
+async function reportFailure(
+  base: string,
+  jobId: string,
+  error: unknown,
+  deliveryAttempted: boolean,
+  options: RunPrintJobOptions,
+) {
   const retryable = error instanceof PrinterDeliveryError
     ? !error.deliveryUnknown
     : !deliveryAttempted;
   const message = error instanceof Error ? error.message : "printer_failed";
   await fetch(new URL(`v1/print-jobs/${jobId}/fail`, base), {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...await authHeaders(options) },
     body: JSON.stringify({ error: message, retryable }),
   }).catch(() => undefined);
 }
@@ -33,13 +44,18 @@ async function reportFailure(base: string, jobId: string, error: unknown, delive
 export async function runPrintJob(apiBaseUrl: string, jobId: string, options: RunPrintJobOptions) {
   const base = apiBaseUrl.endsWith("/") ? apiBaseUrl : `${apiBaseUrl}/`;
   const claim = await expectOk(
-    await fetch(new URL(`v1/print-jobs/${jobId}/claim`, base), { method: "POST" }),
+    await fetch(new URL(`v1/print-jobs/${jobId}/claim`, base), {
+      method: "POST",
+      headers: await authHeaders(options),
+    }),
     "claim",
   );
   const { artifactUrl } = (await claim.json()) as { artifactUrl: string };
   let deliveryAttempted = false;
   try {
-    const artifact = await expectOk(await fetch(new URL(artifactUrl.replace(/^\//, ""), base)), "download");
+    const artifact = await expectOk(await fetch(new URL(artifactUrl.replace(/^\//, ""), base), {
+      headers: await authHeaders(options),
+    }), "download");
     const bytes = new Uint8Array(await artifact.arrayBuffer());
     const inspection = inspectEscPos(bytes);
     let spoolPath: string | null = null;
@@ -56,14 +72,14 @@ export async function runPrintJob(apiBaseUrl: string, jobId: string, options: Ru
     const completed = await expectOk(
       await fetch(new URL(`v1/print-jobs/${jobId}/complete`, base), {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...await authHeaders(options) },
         body: JSON.stringify({ outcome: options.simulated ? "printed_simulated" : "printed" }),
       }),
       "complete",
     );
     return { spoolPath, bytesWritten: bytes.length, inspection, job: await completed.json() };
   } catch (error) {
-    await reportFailure(base, jobId, error, deliveryAttempted);
+    await reportFailure(base, jobId, error, deliveryAttempted, options);
     throw error;
   }
 }
@@ -76,10 +92,11 @@ export function runTcpJob(
   apiBaseUrl: string,
   jobId: string,
   printer: TcpPrinterOptions,
-  options: { spoolDirectory?: string; simulated?: boolean } = {},
+  options: { spoolDirectory?: string; simulated?: boolean; authorization?: () => Promise<string> } = {},
 ) {
   return runPrintJob(apiBaseUrl, jobId, {
     ...(options.spoolDirectory ? { spoolDirectory: options.spoolDirectory } : {}),
+    ...(options.authorization ? { authorization: options.authorization } : {}),
     simulated: options.simulated ?? false,
     transport: new Tcp9100Printer(printer),
   });

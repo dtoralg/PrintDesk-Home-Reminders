@@ -9,6 +9,16 @@ importers:
   .: {}
 
   agents/windows-print-agent:
+    dependencies:
+      '@google-cloud/pubsub':
+        specifier: ^4.11.0
+        version: 4.11.0
+      '@printdesk/shared-models':
+        specifier: workspace:*
+        version: link:../../packages/shared-models
+      google-auth-library:
+        specifier: ^10.2.0
+        version: 10.9.0
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
@@ -43,6 +53,9 @@ importers:
       firebase-admin:
         specifier: ^13.4.0
         version: 13.10.0
+      google-auth-library:
+        specifier: ^10.2.0
+        version: 10.9.0
       zod:
         specifier: ^4.0.0
         version: 4.4.3

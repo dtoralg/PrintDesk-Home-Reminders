@@ -61,6 +61,14 @@ export const requestCreatedEventSchema = z.object({
 });
 export type RequestCreatedEvent = z.infer<typeof requestCreatedEventSchema>;
 
+export const printJobReadyEventSchema = z.object({
+  eventId: z.uuid(),
+  jobId: z.uuid(),
+  printerId: z.string().trim().min(1).max(80),
+  occurredAt: z.iso.datetime({ offset: true }),
+});
+export type PrintJobReadyEvent = z.infer<typeof printJobReadyEventSchema>;
+
 export interface CreateRequestResult {
   requestId: string;
   job: PrintJobView;

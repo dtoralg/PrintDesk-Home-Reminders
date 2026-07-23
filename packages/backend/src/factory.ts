@@ -1,6 +1,6 @@
 import { FileArtifactStore, FileRepository } from "./file-adapters.js";
 import { FirestoreRepository } from "./firestore-repository.js";
-import { GcsArtifactStore, PubSubEventPublisher } from "./gcp-adapters.js";
+import { GcsArtifactStore, PubSubEventPublisher, PubSubPrintJobReadyPublisher } from "./gcp-adapters.js";
 import type { ArtifactStore, EventPublisher, PrintDeskRepository } from "./ports.js";
 import { InlineEventPublisher, RenderWorker } from "./render-worker.js";
 
@@ -34,5 +34,9 @@ export function createRenderDependencies() {
   const projectId = required("GOOGLE_CLOUD_PROJECT");
   const repository = new FirestoreRepository(projectId, process.env.PRINTDESK_FIRESTORE_DATABASE ?? "(default)");
   const artifacts = new GcsArtifactStore(projectId, required("PRINTDESK_STORAGE_BUCKET"));
-  return { repository, artifacts, worker: new RenderWorker(repository, artifacts) };
+  const readyEvents = new PubSubPrintJobReadyPublisher(
+    projectId,
+    process.env.PRINTDESK_PRINT_JOB_READY_TOPIC ?? "print-job-ready",
+  );
+  return { repository, artifacts, worker: new RenderWorker(repository, artifacts, readyEvents) };
 }
