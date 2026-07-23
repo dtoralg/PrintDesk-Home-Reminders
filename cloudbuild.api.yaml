@@ -1,0 +1,67 @@
+steps:
+  - name: node:24-slim
+    id: api-quality
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        apt-get update
+        apt-get install -y --no-install-recommends python3 python3-venv
+        python3 -m venv /tmp/printdesk-venv
+        /tmp/printdesk-venv/bin/pip install --requirement packages/ticket-renderer/requirements.txt
+        export PRINTDESK_PYTHON=/tmp/printdesk-venv/bin/python
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm --filter @printdesk/shared-models typecheck
+        pnpm --filter @printdesk/backend typecheck
+        pnpm --filter @printdesk/api typecheck
+        pnpm --filter @printdesk/shared-models test
+        pnpm --filter @printdesk/backend test
+        pnpm --filter @printdesk/api test
+        pnpm --filter @printdesk/api test:e2e
+
+  - name: gcr.io/cloud-builders/docker
+    id: api-build
+    waitFor: [api-quality]
+    args:
+      - build
+      - --file=apps/api/Dockerfile
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-api:$SHORT_SHA
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-api:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    id: api-push
+    waitFor: [api-build]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-api:$SHORT_SHA
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: api-deploy
+    waitFor: [api-push]
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE_NAME}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-api:$SHORT_SHA
+      - --region=${_REGION}
+      - --project=$PROJECT_ID
+      - --platform=managed
+      - --quiet
+
+  - name: gcr.io/cloud-builders/docker
+    id: api-latest
+    waitFor: [api-deploy]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-api:latest
+
+substitutions:
+  _REGION: europe-southwest1
+  _AR_REPOSITORY: printdesk
+  _SERVICE_NAME: printdesk-api
+
+options:
+  logging: CLOUD_LOGGING_ONLY

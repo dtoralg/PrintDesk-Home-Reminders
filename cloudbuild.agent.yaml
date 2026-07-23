@@ -1,0 +1,16 @@
+steps:
+  - name: node:24-slim
+    id: agent-quality
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm --filter @printdesk/shared-models typecheck
+        pnpm --filter @printdesk/windows-print-agent typecheck
+        pnpm --filter @printdesk/shared-models test
+        pnpm --filter @printdesk/windows-print-agent test
+
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -117,18 +117,12 @@ a Firestore, Storage ni Pub/Sub; el navegador invoca `printdesk-api`.
 4. Región: `europe-southwest1`.
 5. Cifrado administrado por Google. Mantén el análisis de vulnerabilidades
    desactivado inicialmente si quieres evitar su coste adicional.
-6. Abre **Cloud Build > Triggers > Crear trigger**.
-7. Conecta GitHub mediante la aplicación oficial de Cloud Build y selecciona
-   este repositorio.
-8. Evento: push a rama; expresión `^main$`.
-9. Configuración: archivo de configuración de Cloud Build del repositorio;
-   ruta `cloudbuild.yaml`.
-10. Sustituciones: `_REGION=europe-southwest1` y `_AR_REPOSITORY=printdesk`.
+6. Configura los cuatro triggers segmentados y sus permisos siguiendo
+   `docs/cloud-build-pipelines.md`.
 
-El trigger ejecuta la matriz de pruebas y publica `printdesk-api` y
-`printdesk-render` en Artifact Registry con las etiquetas del commit y `latest`.
-Despliega ahora únicamente `printdesk-render`; el API todavía falla cerrado
-intencionadamente hasta completar Firebase Auth.
+Los triggers de API, renderer y web ejecutan pruebas específicas, publican una
+imagen etiquetada con el SHA del commit y despliegan automáticamente una nueva
+revisión. El agente tiene un trigger de validación independiente.
 
 ## 7. Cloud Run: render service
 

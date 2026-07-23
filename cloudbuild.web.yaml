@@ -1,0 +1,68 @@
+steps:
+  - name: node:24-slim
+    id: web-quality
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm --filter @printdesk/shared-models typecheck
+        pnpm --filter @printdesk/web typecheck
+        pnpm --filter @printdesk/shared-models test
+
+  - name: gcr.io/cloud-builders/docker
+    id: web-build
+    waitFor: [web-quality]
+    args:
+      - build
+      - --file=apps/web/Dockerfile
+      - --build-arg=NEXT_PUBLIC_API_BASE_URL=${_WEB_API_BASE_URL}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_API_KEY=${_WEB_FIREBASE_API_KEY}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${_WEB_FIREBASE_AUTH_DOMAIN}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_PROJECT_ID=${_WEB_FIREBASE_PROJECT_ID}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_APP_ID=${_WEB_FIREBASE_APP_ID}
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-web:$SHORT_SHA
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-web:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    id: web-push
+    waitFor: [web-build]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-web:$SHORT_SHA
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: web-deploy
+    waitFor: [web-push]
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE_NAME}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-web:$SHORT_SHA
+      - --region=${_REGION}
+      - --project=$PROJECT_ID
+      - --platform=managed
+      - --quiet
+
+  - name: gcr.io/cloud-builders/docker
+    id: web-latest
+    waitFor: [web-deploy]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-web:latest
+
+substitutions:
+  _REGION: europe-southwest1
+  _AR_REPOSITORY: printdesk
+  _SERVICE_NAME: printdesk-web
+  _WEB_API_BASE_URL: https://printdesk-api-128063282321.europe-southwest1.run.app
+  _WEB_FIREBASE_API_KEY: configure-in-trigger
+  _WEB_FIREBASE_AUTH_DOMAIN: printdesk-503214.firebaseapp.com
+  _WEB_FIREBASE_PROJECT_ID: printdesk-503214
+  _WEB_FIREBASE_APP_ID: configure-in-trigger
+
+options:
+  logging: CLOUD_LOGGING_ONLY

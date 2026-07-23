@@ -1,0 +1,67 @@
+steps:
+  - name: node:24-slim
+    id: render-quality
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        apt-get update
+        apt-get install -y --no-install-recommends python3 python3-venv
+        python3 -m venv /tmp/printdesk-venv
+        /tmp/printdesk-venv/bin/pip install --requirement packages/ticket-renderer/requirements.txt
+        export PRINTDESK_PYTHON=/tmp/printdesk-venv/bin/python
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm --filter @printdesk/shared-models typecheck
+        pnpm --filter @printdesk/backend typecheck
+        pnpm --filter @printdesk/render-service typecheck
+        pnpm --filter @printdesk/shared-models test
+        pnpm --filter @printdesk/backend test
+        pnpm --filter @printdesk/render-service test
+        /tmp/printdesk-venv/bin/python -m unittest discover -s packages/ticket-renderer/tests
+
+  - name: gcr.io/cloud-builders/docker
+    id: render-build
+    waitFor: [render-quality]
+    args:
+      - build
+      - --file=apps/render-service/Dockerfile
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-render:$SHORT_SHA
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-render:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    id: render-push
+    waitFor: [render-build]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-render:$SHORT_SHA
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: render-deploy
+    waitFor: [render-push]
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE_NAME}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-render:$SHORT_SHA
+      - --region=${_REGION}
+      - --project=$PROJECT_ID
+      - --platform=managed
+      - --quiet
+
+  - name: gcr.io/cloud-builders/docker
+    id: render-latest
+    waitFor: [render-deploy]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-render:latest
+
+substitutions:
+  _REGION: europe-southwest1
+  _AR_REPOSITORY: printdesk
+  _SERVICE_NAME: printdesk-render
+
+options:
+  logging: CLOUD_LOGGING_ONLY
