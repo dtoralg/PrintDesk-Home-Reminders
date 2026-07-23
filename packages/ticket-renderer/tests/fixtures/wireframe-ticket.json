@@ -1,0 +1,10 @@
+{
+  "request": {
+    "type": "task",
+    "title": "Llamar a Sanitas",
+    "body": "Preguntar por la cobertura dental y pedir presupuesto.",
+    "important": true,
+    "dueAt": "2026-07-24T08:30:00.000Z"
+  },
+  "shortUrl": "https://pdsk.app/r/K7mQ2z"
+}
