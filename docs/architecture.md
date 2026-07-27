@@ -29,7 +29,7 @@ Alexa -> adaptador Alexa ┘         │              │
 ## Fronteras de seguridad
 
 - La PWA usa Firebase Auth con Google. El API verifica el ID token y la entrada
-  `authorized-users/{uid}`; el navegador no decide identidad, timestamps,
+  `authorized_users/{uid}`; el navegador no decide identidad, timestamps,
   estados ni rutas de Storage.
 - Vertex AI solo propone `type`, `title`, `body`, `important` y `dueAt`; la
   salida pasa por el mismo esquema estricto del modo avanzado.

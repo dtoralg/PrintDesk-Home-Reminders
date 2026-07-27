@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { authenticateFirebase, type AuthDependencies } from "../src/auth.js";
+import {
+  AUTHORIZED_USERS_COLLECTION,
+  authenticateFirebase,
+  type AuthDependencies,
+} from "../src/auth.js";
 
 function dependencies(enabled = true): AuthDependencies {
   return {
@@ -20,6 +24,10 @@ function dependencies(enabled = true): AuthDependencies {
 }
 
 describe("Firebase authentication", () => {
+  it("uses the established Firestore allowlist collection", () => {
+    expect(AUTHORIZED_USERS_COLLECTION).toBe("authorized_users");
+  });
+
   it("accepts a verified token present in the allowlist", async () => {
     await expect(authenticateFirebase("Bearer valid-token", dependencies())).resolves.toEqual({
       uid: "firebase-uid",

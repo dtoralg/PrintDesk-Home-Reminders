@@ -183,7 +183,7 @@ No habilites payload unwrapping: `render-service` valida el sobre estándar
 ## 9. Firebase Auth, allowlist y Cloud Run: API
 
 El código ya verifica el ID token de Firebase y exige
-`authorized-users/{uid}.enabled == true`. Activa Google Sign-In, crea el primer
+`authorized_users/{uid}.enabled == true`. Activa Google Sign-In, crea el primer
 usuario autorizado y despliega `printdesk-api` siguiendo la guía completa
 `docs/firebase-auth-setup.md`.
 

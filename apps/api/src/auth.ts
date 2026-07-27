@@ -9,6 +9,8 @@ interface AuthorizedUserRecord {
   email?: string;
 }
 
+export const AUTHORIZED_USERS_COLLECTION = "authorized_users";
+
 export interface AuthDependencies {
   verifyIdToken(token: string): Promise<DecodedIdToken>;
   getAuthorizedUser(uid: string): Promise<AuthorizedUserRecord | null>;
@@ -34,7 +36,7 @@ function productionDependencies(): AuthDependencies {
   return {
     verifyIdToken: (token) => getAuth(firebaseApp).verifyIdToken(token),
     async getAuthorizedUser(uid) {
-      const snapshot = await firestore!.doc(`authorized-users/${uid}`).get();
+      const snapshot = await firestore!.doc(`${AUTHORIZED_USERS_COLLECTION}/${uid}`).get();
       return snapshot.exists ? snapshot.data() as AuthorizedUserRecord : null;
     },
   };
