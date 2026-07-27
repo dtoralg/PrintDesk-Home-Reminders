@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -42,6 +42,61 @@ describe("API contract", () => {
       request: { type: "task", title: "Llamar a Sanitas", important: true },
       model: "test-model",
     });
+    await app.close();
+  });
+
+  it("crea tickets Alexa con identidad de servicio, destino fijo e idempotencia", async () => {
+    const repository = new FileRepository(directory);
+    const publish = vi.fn(async () => "message-1");
+    const interpreter: TicketInterpreter = {
+      interpret: async () => ({
+        request: {
+          type: "task",
+          title: "Comprar huevos, leche y pan",
+          body: "Añadir huevos, leche y pan a la compra.",
+          important: false,
+          dueAt: null,
+        },
+        model: "test-model",
+        interpretedAt: "2026-07-27T18:00:00.000Z",
+      }),
+    };
+    const app = await buildApp({
+      repository,
+      artifacts: {} as ArtifactStore,
+      events: { publish },
+      ticketInterpreter: interpreter,
+      integrationAuthenticator: {
+        authenticate: async () => ({
+          uid: "alexa:subject-1",
+          displayName: "Alexa",
+          email: "printdesk-alexa@example.iam.gserviceaccount.com",
+        }),
+      },
+    });
+    const request = {
+      method: "POST" as const,
+      url: "/v1/integrations/alexa/requests",
+      headers: {
+        authorization: "Bearer service-token",
+        "idempotency-key": "alexa-request-123",
+      },
+      payload: { text: "que hay que comprar huevos, leche y pan" },
+    };
+    const first = await app.inject(request);
+    const repeated = await app.inject(request);
+    expect(first.statusCode).toBe(202);
+    expect(repeated.statusCode).toBe(200);
+    expect(repeated.json().requestId).toBe(first.json().requestId);
+    const stored = await repository.getRequest(first.json().requestId);
+    const job = await repository.getJob(first.json().job.jobId);
+    expect(stored).toMatchObject({
+      source: "alexa",
+      createdBy: { uid: "alexa:subject-1", displayName: "Alexa" },
+      input: { title: "Comprar huevos, leche y pan" },
+    });
+    expect(job?.printerId).toBe("home");
+    expect(publish).toHaveBeenCalledTimes(2);
     await app.close();
   });
 

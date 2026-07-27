@@ -1,0 +1,75 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "print desk",
+      "intents": [
+        {
+          "name": "PrintIntent",
+          "slots": [
+            {
+              "name": "text",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "imprime {text}",
+            "imprime que {text}",
+            "crea un ticket para {text}",
+            "apunta que {text}",
+            "anota que {text}"
+          ]
+        },
+        {
+          "name": "NoteIntent",
+          "slots": [
+            {
+              "name": "text",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "imprime una nota sobre {text}",
+            "crea una nota sobre {text}"
+          ]
+        },
+        {
+          "name": "CaptureIntent",
+          "slots": [
+            {
+              "name": "text",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "{text}"
+          ]
+        },
+        {
+          "name": "AMAZON.YesIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NoIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        }
+      ],
+      "types": []
+    }
+  }
+}

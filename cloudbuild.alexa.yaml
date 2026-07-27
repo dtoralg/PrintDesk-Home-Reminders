@@ -1,0 +1,74 @@
+steps:
+  - name: node:24-slim
+    id: alexa-quality
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm --filter @printdesk/shared-models typecheck
+        pnpm --filter @printdesk/alexa-service typecheck
+        pnpm --filter @printdesk/shared-models test
+        pnpm --filter @printdesk/alexa-service test
+
+  - name: gcr.io/cloud-builders/docker
+    id: alexa-build
+    waitFor: [alexa-quality]
+    args:
+      - build
+      - --file=apps/alexa-service/Dockerfile
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-alexa:$SHORT_SHA
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-alexa:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    id: alexa-push
+    waitFor: [alexa-build]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-alexa:$SHORT_SHA
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: alexa-deploy
+    waitFor: [alexa-push]
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE_NAME}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-alexa:$SHORT_SHA
+      - --region=${_REGION}
+      - --project=$PROJECT_ID
+      - --platform=managed
+      - --service-account=${_RUNTIME_SERVICE_ACCOUNT}@$PROJECT_ID.iam.gserviceaccount.com
+      - --port=8080
+      - --allow-unauthenticated
+      - --max-instances=1
+      - --update-env-vars=PRINTDESK_API_BASE_URL=${_PRINTDESK_API_BASE_URL},PRINTDESK_API_TOKEN_AUDIENCE=${_PRINTDESK_API_TOKEN_AUDIENCE},ALEXA_REQUIRE_CONFIRMATION=${_REQUIRE_CONFIRMATION},ALEXA_RATE_LIMIT_PER_MINUTE=${_RATE_LIMIT_PER_MINUTE}
+      - --update-secrets=ALEXA_APPLICATION_ID=${_APPLICATION_ID_SECRET}:${_APPLICATION_ID_SECRET_VERSION},ALEXA_ALLOWED_USER_IDS=${_USER_IDS_SECRET}:${_USER_IDS_SECRET_VERSION}
+      - --quiet
+
+  - name: gcr.io/cloud-builders/docker
+    id: alexa-latest
+    waitFor: [alexa-deploy]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/printdesk-alexa:latest
+
+substitutions:
+  _REGION: europe-southwest1
+  _AR_REPOSITORY: printdesk
+  _SERVICE_NAME: printdesk-alexa
+  _RUNTIME_SERVICE_ACCOUNT: printdesk-alexa
+  _PRINTDESK_API_BASE_URL: https://printdesk-api-128063282321.europe-southwest1.run.app
+  _PRINTDESK_API_TOKEN_AUDIENCE: https://printdesk-api-128063282321.europe-southwest1.run.app
+  _APPLICATION_ID_SECRET: printdesk-alexa-application-id
+  _APPLICATION_ID_SECRET_VERSION: "1"
+  _USER_IDS_SECRET: printdesk-alexa-user-ids
+  _USER_IDS_SECRET_VERSION: "1"
+  _REQUIRE_CONFIRMATION: "false"
+  _RATE_LIMIT_PER_MINUTE: "10"
+
+options:
+  logging: CLOUD_LOGGING_ONLY

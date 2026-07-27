@@ -25,6 +25,8 @@ import {
   type PrinterCheckView,
   type PrinterHealthView,
   type PaperRollView,
+  type CreatedBy,
+  type CreateRequestCommand,
   type CreateRequestResult,
   type NotionSyncView,
   type PrintJobView,
@@ -33,6 +35,10 @@ import {
 } from "@printdesk/shared-models";
 import { authenticate } from "./auth.js";
 import { productionDeviceAuthenticator, type DeviceAuthenticator } from "./device-auth.js";
+import {
+  productionIntegrationAuthenticator,
+  type IntegrationAuthenticator,
+} from "./integration-auth.js";
 
 export interface AppOptions {
   dataDir?: string;
@@ -43,11 +49,26 @@ export interface AppOptions {
   printerChecks?: PrinterCheckPublisher;
   ticketInterpreter?: TicketInterpreter;
   deviceAuthenticator?: DeviceAuthenticator;
+  integrationAuthenticator?: IntegrationAuthenticator;
 }
 
 const idSchema = z.uuid();
 const printerIdSchema = z.string().trim().min(1).max(80);
 const shortCodeSchema = z.string().regex(/^[A-Za-z0-9_-]{8,32}$/);
+const integrationTextCommandSchema = z.object({
+  text: z.string().trim().min(3).max(2_000),
+}).strict();
+
+class EventPublishError extends Error {
+  constructor(
+    readonly idempotencyKey: string,
+    readonly requestId: string,
+    readonly jobId: string,
+    options: ErrorOptions,
+  ) {
+    super("event_publish_failed", options);
+  }
+}
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => ({
@@ -131,6 +152,7 @@ export async function buildApp(options: AppOptions = {}) {
   };
   const baseUrl = options.publicBaseUrl ?? process.env.PRINTDESK_PUBLIC_BASE_URL ?? "http://localhost:8080";
   const deviceAuthenticator = options.deviceAuthenticator ?? productionDeviceAuthenticator();
+  const integrationAuthenticator = options.integrationAuthenticator ?? productionIntegrationAuthenticator();
   const vertexAuth = new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/cloud-platform"] });
   const ticketInterpreter = options.ticketInterpreter ?? (process.env.PRINTDESK_BACKEND === "gcp"
     ? new VertexTicketInterpreter({
@@ -172,6 +194,71 @@ export async function buildApp(options: AppOptions = {}) {
     return await repository.completePrint(job.jobId, "printed") ?? job;
   }
 
+  async function createRequest(
+    actor: CreatedBy,
+    command: CreateRequestCommand,
+    idempotencyKey: string,
+  ): Promise<{ result: CreateRequestResult; created: boolean }> {
+    const commandId = createHash("sha256").update(`${actor.uid}:${idempotencyKey}`).digest("hex");
+    const requestId = randomUUID();
+    const jobId = randomUUID();
+    const eventId = randomUUID();
+    const shortCode = randomBytes(6).toString("base64url");
+    const now = new Date().toISOString();
+    const graph: RequestGraph = {
+      commandId,
+      request: {
+        requestId,
+        input: command.request,
+        createdBy: actor,
+        source: command.source,
+        shortCode,
+        shortUrl: `${baseUrl}/r/${shortCode}`,
+        createdAt: now,
+      },
+      job: {
+        jobId,
+        requestId,
+        printerId: command.printerId,
+        status: "rendering",
+        previewPath: null,
+        escposPath: null,
+        attempts: 0,
+        error: null,
+        renderLeaseEventId: null,
+        renderLeaseExpiresAt: null,
+        paperLengthMm: null,
+        paperAccountedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      event: { eventId, requestId, jobId, occurredAt: now },
+    };
+    const stored = await repository.createRequestGraph(graph);
+    try {
+      await events.publish(stored.event);
+    } catch (cause) {
+      throw new EventPublishError(
+        idempotencyKey,
+        stored.request.requestId,
+        stored.job.jobId,
+        { cause },
+      );
+    }
+    const currentJob = await repository.getJob(stored.job.jobId) ?? stored.job;
+    const notion = await repository.getNotionSync(stored.request.requestId);
+    return {
+      created: stored.created,
+      result: {
+        requestId: stored.request.requestId,
+        job: view(currentJob, baseUrl),
+        notion: notionView(notion),
+        shortCode: stored.request.shortCode,
+        shortUrl: stored.request.shortUrl,
+      },
+    };
+  }
+
   app.get("/health", async () => ({ status: "ok", backend: process.env.PRINTDESK_BACKEND ?? "local" }));
 
   app.post("/v1/tickets/interpret", async (request, reply) => {
@@ -210,64 +297,68 @@ export async function buildApp(options: AppOptions = {}) {
       return reply.code(400).send({ error: "invalid_idempotency_key" });
     }
     const idempotencyKey = suppliedKey ?? randomUUID();
-    const commandId = createHash("sha256").update(`${actor.uid}:${idempotencyKey}`).digest("hex");
-    const requestId = randomUUID();
-    const jobId = randomUUID();
-    const eventId = randomUUID();
-    const shortCode = randomBytes(6).toString("base64url");
-    const now = new Date().toISOString();
-    const graph: RequestGraph = {
-      commandId,
-      request: {
-        requestId,
-        input: command.data.request,
-        createdBy: actor,
-        source: command.data.source,
-        shortCode,
-        shortUrl: `${baseUrl}/r/${shortCode}`,
-        createdAt: now,
-      },
-      job: {
-        jobId,
-        requestId,
-        printerId: command.data.printerId,
-        status: "rendering",
-        previewPath: null,
-        escposPath: null,
-        attempts: 0,
-        error: null,
-        renderLeaseEventId: null,
-        renderLeaseExpiresAt: null,
-        paperLengthMm: null,
-        paperAccountedAt: null,
-        createdAt: now,
-        updatedAt: now,
-      },
-      event: { eventId, requestId, jobId, occurredAt: now },
-    };
-    const stored = await repository.createRequestGraph(graph);
     try {
-      await events.publish(stored.event);
+      const stored = await createRequest(actor, command.data, idempotencyKey);
+      reply.header("idempotency-key", idempotencyKey);
+      return reply.code(stored.created ? 202 : 200).send(stored.result);
     } catch (error) {
-      request.log.error({ error, eventId: stored.event.eventId }, "Unable to publish request.created");
+      if (!(error instanceof EventPublishError)) throw error;
+      request.log.error({ error: error.cause, requestId: error.requestId }, "Unable to publish request.created");
       return reply.code(503).send({
         error: "event_publish_failed",
-        retryWithIdempotencyKey: idempotencyKey,
-        requestId: stored.request.requestId,
-        jobId: stored.job.jobId,
+        retryWithIdempotencyKey: error.idempotencyKey,
+        requestId: error.requestId,
+        jobId: error.jobId,
       });
     }
-    const currentJob = await repository.getJob(stored.job.jobId) ?? stored.job;
-    const notion = await repository.getNotionSync(stored.request.requestId);
-    const result: CreateRequestResult = {
-      requestId: stored.request.requestId,
-      job: view(currentJob, baseUrl),
-      notion: notionView(notion),
-      shortCode: stored.request.shortCode,
-      shortUrl: stored.request.shortUrl,
-    };
-    reply.header("idempotency-key", idempotencyKey);
-    return reply.code(stored.created ? 202 : 200).send(result);
+  });
+
+  app.post("/v1/integrations/alexa/requests", async (request, reply) => {
+    let actor;
+    try {
+      actor = await integrationAuthenticator.authenticate(request.headers.authorization);
+    } catch {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    const command = integrationTextCommandSchema.safeParse(request.body);
+    if (!command.success) return reply.code(400).send({ error: "invalid_request" });
+    const rawKey = request.headers["idempotency-key"];
+    const suppliedKey = Array.isArray(rawKey) ? rawKey[0] : rawKey;
+    if (!suppliedKey || suppliedKey.length > 128 || suppliedKey.length < 8) {
+      return reply.code(400).send({ error: "invalid_idempotency_key" });
+    }
+    if (!ticketInterpreter) return reply.code(503).send({ error: "ticket_interpreter_unavailable" });
+    let interpreted;
+    try {
+      interpreted = await ticketInterpreter.interpret(command.data.text, {
+        now: new Date().toISOString(),
+        timeZone: "Europe/Madrid",
+      });
+    } catch (error) {
+      request.log.error({ error }, "Unable to interpret Alexa ticket with Vertex AI");
+      return reply.code(503).send({ error: "ticket_interpretation_failed" });
+    }
+    try {
+      const stored = await createRequest(actor, {
+        request: interpreted.request,
+        printerId: "home",
+        source: "alexa",
+      }, suppliedKey);
+      reply.header("idempotency-key", suppliedKey);
+      return reply.code(stored.created ? 202 : 200).send({
+        ...stored.result,
+        request: interpreted.request,
+      });
+    } catch (error) {
+      if (!(error instanceof EventPublishError)) throw error;
+      request.log.error({ error: error.cause, requestId: error.requestId }, "Unable to publish Alexa request");
+      return reply.code(503).send({
+        error: "event_publish_failed",
+        retryWithIdempotencyKey: error.idempotencyKey,
+        requestId: error.requestId,
+        jobId: error.jobId,
+      });
+    }
   });
 
   app.get("/v1/requests", async (request, reply) => {

@@ -1,6 +1,6 @@
 # Pipelines segmentados y despliegue continuo
 
-PrintDesk utiliza cinco triggers independientes sobre `main`. Un cambio de
+PrintDesk utiliza seis triggers independientes sobre `main`. Un cambio de
 documentación no construye imágenes; un cambio compartido activa únicamente
 los componentes que dependen de él.
 
@@ -10,6 +10,7 @@ los componentes que dependen de él.
 | `printdesk-render-main` | `cloudbuild.render.yaml` | Prueba, construye, publica y despliega `printdesk-render` |
 | `printdesk-web-main` | `cloudbuild.web.yaml` | Comprueba, construye, publica y despliega `printdesk-web` |
 | `printdesk-notion-main` | `cloudbuild.notion.yaml` | Prueba, construye, publica y despliega `printdesk-notion` |
+| `printdesk-alexa-main` | `cloudbuild.alexa.yaml` | Prueba, construye, publica y despliega `printdesk-alexa` |
 | `printdesk-agent-main` | `cloudbuild.agent.yaml` | Comprueba el agente Windows; no modifica Cloud Run |
 
 Los despliegues usan `$SHORT_SHA`. La etiqueta `latest` se actualiza únicamente
@@ -27,7 +28,8 @@ servicio que usan los triggers y habilita:
 Cloud Build necesita además **Service Account User** sobre cada identidad de
 ejecución de Cloud Run. Desde **IAM & Admin > Service Accounts**, abre
 sucesivamente las cuentas usadas por `printdesk-api`, `printdesk-render`,
-`printdesk-web` y `printdesk-notion`; en **Principals with access**, concede a
+`printdesk-web`, `printdesk-notion` y `printdesk-alexa`; en
+**Principals with access**, concede a
 la cuenta de Cloud Build el rol **Service Account User**.
 
 No cambies las identidades de ejecución de los servicios. Este permiso permite
@@ -138,13 +140,35 @@ sobrescribiéndose en el trigger.
   tsconfig.base.json
   ```
 
+## Trigger de Alexa
+
+- Evento y rama: push a `^main$`.
+- Ruta: `cloudbuild.alexa.yaml`.
+- Included files:
+
+  ```text
+  apps/alexa-service/**
+  packages/shared-models/**
+  cloudbuild.alexa.yaml
+  package.json
+  pnpm-lock.yaml
+  pnpm-workspace.yaml
+  tsconfig.base.json
+  .dockerignore
+  ```
+
+El servicio acepta tráfico público porque Alexa no puede obtener identidad de
+Google. La aplicación verifica criptográficamente la firma y el timestamp de
+Alexa antes de leer el comando. Cloud Build necesita **Service Account User**
+sobre la identidad `printdesk-alexa`.
+
 ## Migración del trigger existente
 
-1. Sube primero los cinco archivos `cloudbuild.*.yaml`; el trigger antiguo
+1. Sube primero los seis archivos `cloudbuild.*.yaml`; el trigger antiguo
    puede ejecutar todavía `cloudbuild.yaml` durante ese primer merge.
 2. Edita el trigger existente y conviértelo en `printdesk-api-main`, cambiando
    la ruta y los filtros según la sección de API.
-3. Crea los otros cuatro triggers.
+3. Crea los otros cinco triggers.
 4. Comprueba que no queda ningún trigger activo apuntando a `cloudbuild.yaml`;
    de lo contrario reconstruirá los tres servicios en cada push.
 5. Ejecuta manualmente cada trigger una vez desde **Run**.

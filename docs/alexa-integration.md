@@ -1,8 +1,8 @@
-# Integración futura con Alexa
+# Integración con Alexa
 
 ## Alcance
 
-PrintDesk incorporará una **Custom Skill privada** para crear tickets por voz.
+PrintDesk incorpora una **Custom Skill privada** para crear tickets por voz.
 Permanecerá en modo `Development`: no se publicará ni se enviará a certificación
 en Alexa Skills Store. Estará disponible en los Echo asociados a la cuenta de
 Amazon Developer utilizada durante el desarrollo.
@@ -29,6 +29,9 @@ Alexa -> printdesk-alexa (Cloud Run público y aislado)
 `printdesk-alexa` será un adaptador sin acceso directo a la impresora. Invocará
 la API principal mediante identidad de servicio y fijará internamente
 `printerId: home` y `source: alexa`; la petición de Alexa no podrá modificarlos.
+
+La implementación y el modelo `es-ES` están en `apps/alexa-service`. La
+configuración paso a paso está en `docs/alexa-console-setup.md`.
 
 ## Modelo de interacción
 
