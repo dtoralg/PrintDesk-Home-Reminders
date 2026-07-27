@@ -51,6 +51,23 @@ interface RateEntry {
   expiresAt: number;
 }
 
+function verificationFailureReason(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (message.includes("missing certificate")) return "missing_certificate";
+  if (message.includes("missing signature")) return "missing_signature";
+  if (message.includes("unsupported protocol")
+    || message.includes("invalid host name")
+    || message.includes("invalid path")
+    || message.includes("expecting 443")) return "invalid_certificate_url";
+  if (message.includes("unable to load x509")) return "certificate_download_failed";
+  if (message.includes("certificate")
+    || message.includes("cert chain")
+    || message.includes("certchain")) return "certificate_validation_failed";
+  if (message.includes("signature does not match")) return "body_signature_mismatch";
+  if (message.includes("timestamp")) return "timestamp_validation_failed";
+  return "unknown_verification_failure";
+}
+
 function speech(text: string, shouldEndSession: boolean, sessionAttributes: Record<string, unknown> = {}) {
   return {
     version: "1.0",
@@ -136,11 +153,23 @@ export function buildAlexaApp(
     if (!body?.raw) return reply.code(400).send({ error: "invalid_alexa_body" });
     try {
       await verifier.verify(body.raw, request.headers);
-    } catch {
+    } catch (error) {
+      request.log.warn(
+        { reason: verificationFailureReason(error) },
+        "Alexa request verification failed",
+      );
       return reply.code(400).send({ error: "invalid_alexa_signature" });
     }
     const parsed = alexaEnvelopeSchema.safeParse(body.value);
-    if (!parsed.success) return reply.code(400).send({ error: "invalid_alexa_request" });
+    if (!parsed.success) {
+      request.log.warn({
+        issues: parsed.error.issues.map((issue) => ({
+          code: issue.code,
+          path: issue.path.join("."),
+        })),
+      }, "Alexa request schema validation failed");
+      return reply.code(400).send({ error: "invalid_alexa_request" });
+    }
     const envelope = parsed.data;
     const system = envelope.context.System;
     const sessionApplicationId = envelope.session?.application.applicationId;

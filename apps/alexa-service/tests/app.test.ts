@@ -126,6 +126,22 @@ describe("Alexa adapter", () => {
     await app.close();
   });
 
+  it("clasifica un fallo de firma sin registrar el cuerpo de la petición", async () => {
+    const client = { createFromText: vi.fn<PrintDeskAlexaClient["createFromText"]>() };
+    const app = buildAlexaApp(config(), {
+      verify: async () => { throw new Error("request body and signature does not match"); },
+    }, client);
+    const response = await app.inject({
+      method: "POST",
+      url: "/integrations/alexa",
+      payload: envelope(),
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "invalid_alexa_signature" });
+    expect(client.createFromText).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it("puede pedir confirmación sin imprimir hasta recibir AMAZON.YesIntent", async () => {
     const createFromText = vi.fn<PrintDeskAlexaClient["createFromText"]>(async () => ({
       request: {
