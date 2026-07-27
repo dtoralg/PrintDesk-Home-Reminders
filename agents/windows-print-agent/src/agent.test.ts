@@ -162,4 +162,27 @@ describe("ESC/POS dry printing", () => {
       status: "printing",
     });
   });
+
+  it("retries completion without reporting a printed ticket as failed", async () => {
+    const bytes = ticket();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ artifactUrl: "/artifact" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(bytes, { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "checking_printer" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "printing" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "temporary" }), { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "printed" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(runPrintJob("https://api.example.test", crypto.randomUUID(), {
+      simulated: false,
+      transport: {
+        probe: vi.fn().mockResolvedValue(undefined),
+        send: vi.fn().mockResolvedValue(undefined),
+      },
+    })).resolves.toMatchObject({ job: { status: "printed" } });
+
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock.mock.calls.every(([url]) => !String(url).endsWith("/fail"))).toBe(true);
+  });
 });

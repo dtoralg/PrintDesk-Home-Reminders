@@ -20,6 +20,11 @@ function printSteps(ticket: ActiveTicket): Array<{ label: string; state: StepSta
       ? "error"
       : "active";
   return [
+    ...(ticket.interpretedByAi ? [{
+      label: "Interpretando con Vertex AI",
+      state: "complete" as StepState,
+      detail: "Hecho",
+    }] : []),
     { label: "Solicitud guardada", state: "complete", detail: "Hecho" },
     {
       label: "Sincronizando con Notion",

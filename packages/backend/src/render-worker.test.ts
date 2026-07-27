@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { StoredPrintJob, StoredRequest } from "./domain.js";
 import type { ArtifactStore, PrintDeskRepository, PrintJobReadyPublisher } from "./ports.js";
-import { rendererPayload, RenderWorker } from "./render-worker.js";
+import { escPosPaperLengthMm, rendererPayload, RenderWorker } from "./render-worker.js";
 
 const event = {
   eventId: "33333333-3333-4333-8333-333333333333",
@@ -11,6 +11,11 @@ const event = {
 };
 
 describe("RenderWorker ready events", () => {
+  it("calcula la longitud física del raster más el avance de corte", () => {
+    const bytes = Buffer.from([0x1b, 0x40, 0x1b, 0x61, 0x01, 0x1d, 0x76, 0x30, 0x00, 72, 0, 80, 0]);
+    expect(escPosPaperLengthMm(bytes)).toBe(22);
+  });
+
   it("entrega al renderer el autor y la fecha de creación", () => {
     const request = {
       requestId: event.requestId,

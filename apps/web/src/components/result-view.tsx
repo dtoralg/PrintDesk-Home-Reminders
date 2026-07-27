@@ -57,7 +57,7 @@ export function ResultView({ ticket, user, onCreateAnother, onFinish }: ResultVi
         </article>
         <div className="result-actions">
           {ticket.notion.status === "ready" && ticket.notion.url && (
-            <a className="secondary-button" href={ticket.notion.url} rel="noreferrer" target="_blank">Ver en Notion</a>
+            <a className="secondary-button" href={ticket.notion.url}>Abrir en Notion</a>
           )}
           <a className="secondary-button" href={`${ticket.shortUrl}?view=live`} rel="noreferrer" target="_blank">Ver ticket</a>
           <button className="primary-button" onClick={onCreateAnother} type="button"><span>Crear otro ticket</span><UiIcon name="plus" size={18} /></button>

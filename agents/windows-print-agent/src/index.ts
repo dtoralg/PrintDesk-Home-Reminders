@@ -58,6 +58,31 @@ async function reportStatus(
   );
 }
 
+async function completeJob(
+  base: string,
+  jobId: string,
+  outcome: "printed" | "printed_simulated",
+  options: RunPrintJobOptions,
+) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      return await expectOk(
+        await fetch(new URL(`v1/print-jobs/${jobId}/complete`, base), {
+          method: "POST",
+          headers: { "content-type": "application/json", ...await authHeaders(options) },
+          body: JSON.stringify({ outcome }),
+        }),
+        "complete",
+      );
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) await new Promise((resolveDelay) => setTimeout(resolveDelay, 300 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
 export async function runPrintJob(apiBaseUrl: string, jobId: string, options: RunPrintJobOptions) {
   const base = apiBaseUrl.endsWith("/") ? apiBaseUrl : `${apiBaseUrl}/`;
   const claim = await expectOk(
@@ -69,6 +94,7 @@ export async function runPrintJob(apiBaseUrl: string, jobId: string, options: Ru
   );
   const { artifactUrl } = (await claim.json()) as { artifactUrl: string };
   let deliveryAttempted = false;
+  let deliverySucceeded = false;
   try {
     const artifact = await expectOk(await fetch(new URL(artifactUrl.replace(/^\//, ""), base), {
       headers: await authHeaders(options),
@@ -89,17 +115,16 @@ export async function runPrintJob(apiBaseUrl: string, jobId: string, options: Ru
       deliveryAttempted = true;
       await options.transport.send(bytes);
     }
-    const completed = await expectOk(
-      await fetch(new URL(`v1/print-jobs/${jobId}/complete`, base), {
-        method: "POST",
-        headers: { "content-type": "application/json", ...await authHeaders(options) },
-        body: JSON.stringify({ outcome: options.simulated ? "printed_simulated" : "printed" }),
-      }),
-      "complete",
+    deliverySucceeded = true;
+    const completed = await completeJob(
+      base,
+      jobId,
+      options.simulated ? "printed_simulated" : "printed",
+      options,
     );
     return { spoolPath, bytesWritten: bytes.length, inspection, job: await completed.json() };
   } catch (error) {
-    await reportFailure(base, jobId, error, deliveryAttempted, options);
+    if (!deliverySucceeded) await reportFailure(base, jobId, error, deliveryAttempted, options);
     throw error;
   }
 }

@@ -4,9 +4,12 @@ import type {
   ArtifactPaths,
   CreatedGraph,
   NotionSyncWork,
+  PrinterHealthUpdate,
   RequestGraph,
   StoredNotionSync,
   StoredPrinterCheck,
+  StoredPrinterHealth,
+  StoredPaperRoll,
   StoredPrintJob,
   StoredRequest,
 } from "./domain.js";
@@ -131,6 +134,52 @@ export class FirestoreRepository implements PrintDeskRepository {
       transaction.set(ref, updated);
       return updated;
     });
+  }
+
+  async getPrinterHealth(printerId: string) {
+    const snapshot = await this.db().doc(`printer_health/${printerId}`).get();
+    return snapshot.exists ? snapshot.data() as StoredPrinterHealth : null;
+  }
+
+  updatePrinterHealth(printerId: string, update: PrinterHealthUpdate) {
+    return this.db().runTransaction(async (transaction) => {
+      const ref = this.db().doc(`printer_health/${printerId}`);
+      const snapshot = await transaction.get(ref);
+      const current = snapshot.exists ? snapshot.data() as StoredPrinterHealth : null;
+      const now = new Date().toISOString();
+      const health: StoredPrinterHealth = {
+        printerId,
+        agentStatus: update.agentStatus ?? current?.agentStatus ?? "unknown",
+        printerStatus: update.printerStatus ?? current?.printerStatus ?? "unknown",
+        source: update.source,
+        error: update.error === undefined ? current?.error ?? null : update.error,
+        lastAgentSeenAt: update.agentStatus === "online" ? now : current?.lastAgentSeenAt ?? null,
+        lastPrinterSeenAt: update.printerStatus === "available" ? now : current?.lastPrinterSeenAt ?? null,
+        updatedAt: now,
+      };
+      transaction.set(ref, health);
+      return health;
+    });
+  }
+
+  async getPaperRoll(printerId: string) {
+    const snapshot = await this.db().doc(`paper_rolls/${printerId}`).get();
+    return snapshot.exists ? snapshot.data() as StoredPaperRoll : null;
+  }
+
+  async replacePaperRoll(printerId: string, lengthMm: number, actor: StoredPaperRoll["changedBy"]) {
+    const now = new Date().toISOString();
+    const roll: StoredPaperRoll = {
+      printerId,
+      lengthMm,
+      usedMm: 0,
+      printedTickets: 0,
+      changedBy: actor,
+      changedAt: now,
+      updatedAt: now,
+    };
+    await this.db().doc(`paper_rolls/${printerId}`).set(roll);
+    return roll;
   }
 
   beginNotionSync(event: RequestCreatedEvent): Promise<NotionSyncWork | null> {
@@ -290,9 +339,29 @@ export class FirestoreRepository implements PrintDeskRepository {
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) return null;
       const job = snapshot.data() as StoredPrintJob;
-      if (job.status !== "printing") return null;
-      const updated = { ...job, status: outcome, updatedAt: new Date().toISOString() };
+      const recoverable = job.status === "failed" && job.error?.startsWith("complete_failed");
+      if (job.status !== outcome && job.status !== "printing" && !recoverable) return null;
+      const shouldAccount = outcome === "printed" && !job.paperAccountedAt;
+      const rollRef = this.db().doc(`paper_rolls/${job.printerId}`);
+      const rollSnapshot = shouldAccount ? await transaction.get(rollRef) : null;
+      const now = new Date().toISOString();
+      const updated: StoredPrintJob = {
+        ...job,
+        status: outcome,
+        error: null,
+        ...(shouldAccount ? { paperAccountedAt: now } : {}),
+        updatedAt: job.status === outcome ? job.updatedAt : now,
+      };
       transaction.set(ref, updated);
+      if (shouldAccount && rollSnapshot?.exists && (job.paperLengthMm ?? 0) > 0) {
+        const roll = rollSnapshot.data() as StoredPaperRoll;
+        transaction.set(rollRef, {
+          ...roll,
+          usedMm: roll.usedMm + job.paperLengthMm!,
+          printedTickets: roll.printedTickets + 1,
+          updatedAt: now,
+        });
+      }
       return updated;
     });
   }

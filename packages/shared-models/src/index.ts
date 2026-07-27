@@ -14,11 +14,22 @@ export const requestInputSchema = z
   .strict();
 export type RequestInput = z.infer<typeof requestInputSchema>;
 
+export const interpretTicketCommandSchema = z.object({
+  text: z.string().trim().min(3).max(2_000),
+}).strict();
+export type InterpretTicketCommand = z.infer<typeof interpretTicketCommandSchema>;
+
+export interface InterpretTicketResult {
+  request: RequestInput;
+  model: string;
+  interpretedAt: string;
+}
+
 export const createRequestCommandSchema = z
   .object({
     request: requestInputSchema,
     printerId: z.string().trim().min(1).max(80).default("home"),
-    source: z.enum(["pwa", "mcp"]),
+    source: z.enum(["pwa", "mcp", "alexa"]),
   })
   .strict();
 export type CreateRequestCommand = z.infer<typeof createRequestCommandSchema>;
@@ -116,6 +127,35 @@ export interface PrinterCheckView {
   status: PrinterCheckStatus;
   error: string | null;
   requestedAt: string;
+  updatedAt: string;
+}
+
+export const agentHealthStatusSchema = z.enum(["unknown", "checking", "online", "offline"]);
+export type AgentHealthStatus = z.infer<typeof agentHealthStatusSchema>;
+
+export const printerHealthStatusSchema = z.enum(["unknown", "checking", "available", "unavailable"]);
+export type PrinterHealthStatus = z.infer<typeof printerHealthStatusSchema>;
+
+export interface PrinterHealthView {
+  printerId: string;
+  agentStatus: AgentHealthStatus;
+  printerStatus: PrinterHealthStatus;
+  source: "startup_check" | "manual_check" | "print";
+  error: string | null;
+  lastAgentSeenAt: string | null;
+  lastPrinterSeenAt: string | null;
+  updatedAt: string;
+}
+
+export interface PaperRollView {
+  printerId: string;
+  lengthMeters: number;
+  usedMeters: number;
+  remainingMeters: number;
+  remainingPercent: number;
+  printedTickets: number;
+  estimatedTicketsRemaining: number | null;
+  changedAt: string;
   updatedAt: string;
 }
 

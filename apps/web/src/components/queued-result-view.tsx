@@ -29,7 +29,7 @@ export function QueuedResultView({ ticket, onFinish }: QueuedResultViewProps) {
         <p className="queue-note">Tu ticket está guardado. Puedes cerrar esta pantalla: no necesitas mantener la PWA abierta.</p>
         <div className="result-actions">
           {ticket.notion.status === "ready" && ticket.notion.url && (
-            <a className="secondary-button" href={ticket.notion.url} rel="noreferrer" target="_blank">Ver en Notion</a>
+            <a className="secondary-button" href={ticket.notion.url}>Abrir en Notion</a>
           )}
           <a className="secondary-button" href={`${ticket.shortUrl}?view=live`} rel="noreferrer" target="_blank">Ver ticket</a>
           <button className="primary-button" onClick={onFinish} type="button">Finalizar</button>

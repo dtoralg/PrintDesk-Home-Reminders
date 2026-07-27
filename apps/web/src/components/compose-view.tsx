@@ -12,6 +12,7 @@ interface ComposeViewProps {
   error: string | null;
   onBack: () => void;
   onSubmit: (draft: TicketDraft) => void;
+  initialDraft?: TicketDraft | null;
 }
 
 const requestTypes: Array<{ value: RequestType; label: string }> = [
@@ -21,15 +22,17 @@ const requestTypes: Array<{ value: RequestType; label: string }> = [
   { value: "note", label: "Nota" },
 ];
 
-export function ComposeView({ busy, creatorName, error, onBack, onSubmit }: ComposeViewProps) {
-  const [draft, setDraft] = useState<TicketDraft>({
+const emptyDraft: TicketDraft = {
     type: "task",
     title: "",
     body: "",
     important: false,
     dueAt: null,
     dueLocal: "",
-  });
+};
+
+export function ComposeView({ busy, creatorName, error, initialDraft, onBack, onSubmit }: ComposeViewProps) {
+  const [draft, setDraft] = useState<TicketDraft>(initialDraft ?? emptyDraft);
 
   function update(values: Partial<TicketDraft>) {
     setDraft((current) => ({ ...current, ...values }));
@@ -50,7 +53,7 @@ export function ComposeView({ busy, creatorName, error, onBack, onSubmit }: Comp
       <header className="compose-header">
         <button className="icon-button" onClick={onBack} type="button" aria-label="Volver">←</button>
         <div><p className="kicker">NUEVA SOLICITUD</p><h1>Nuevo ticket</h1></div>
-        <span className="mode-badge">MODO SIMPLE</span>
+        <span className="mode-badge">{draft.interpretedByAi ? "REVISIÓN IA" : "MODO AVANZADO"}</span>
       </header>
 
       <div className="compose-grid">

@@ -1,6 +1,8 @@
 import type {
+  AgentHealthStatus,
   CreatedBy,
   NotionSyncStatus,
+  PrinterHealthStatus,
   PrinterCheckStatus,
   PrintJobStatus,
   RequestCreatedEvent,
@@ -11,7 +13,7 @@ export interface StoredRequest {
   requestId: string;
   input: RequestInput;
   createdBy: CreatedBy;
-  source: "pwa" | "mcp";
+  source: "pwa" | "mcp" | "alexa";
   shortCode: string;
   shortUrl: string;
   createdAt: string;
@@ -28,6 +30,8 @@ export interface StoredPrintJob {
   error: string | null;
   renderLeaseEventId: string | null;
   renderLeaseExpiresAt: string | null;
+  paperLengthMm?: number | null;
+  paperAccountedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -58,9 +62,38 @@ export interface StoredPrinterCheck {
   checkId: string;
   printerId: string;
   requestedBy: CreatedBy;
+  source?: "startup_check" | "manual_check";
   status: PrinterCheckStatus;
   error: string | null;
   requestedAt: string;
+  updatedAt: string;
+}
+
+export interface StoredPrinterHealth {
+  printerId: string;
+  agentStatus: AgentHealthStatus;
+  printerStatus: PrinterHealthStatus;
+  source: "startup_check" | "manual_check" | "print";
+  error: string | null;
+  lastAgentSeenAt: string | null;
+  lastPrinterSeenAt: string | null;
+  updatedAt: string;
+}
+
+export interface PrinterHealthUpdate {
+  agentStatus?: AgentHealthStatus;
+  printerStatus?: PrinterHealthStatus;
+  source: StoredPrinterHealth["source"];
+  error?: string | null;
+}
+
+export interface StoredPaperRoll {
+  printerId: string;
+  lengthMm: number;
+  usedMm: number;
+  printedTickets: number;
+  changedBy: CreatedBy;
+  changedAt: string;
   updatedAt: string;
 }
 
@@ -85,4 +118,5 @@ export interface NotionSyncWork {
 export interface ArtifactPaths {
   previewPath: string;
   escposPath: string;
+  paperLengthMm?: number;
 }

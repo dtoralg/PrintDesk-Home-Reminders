@@ -5,9 +5,12 @@ import type {
   ArtifactPaths,
   CreatedGraph,
   NotionSyncWork,
+  PrinterHealthUpdate,
   RequestGraph,
   StoredNotionSync,
   StoredPrinterCheck,
+  StoredPrinterHealth,
+  StoredPaperRoll,
   StoredPrintJob,
   StoredRequest,
 } from "./domain.js";
@@ -18,6 +21,8 @@ interface FileState {
   jobs: Record<string, StoredPrintJob>;
   commands: Record<string, RequestGraph>;
   printerChecks: Record<string, StoredPrinterCheck>;
+  printerHealth: Record<string, StoredPrinterHealth>;
+  paperRolls: Record<string, StoredPaperRoll>;
   notionSyncs: Record<string, StoredNotionSync>;
 }
 
@@ -26,6 +31,8 @@ const emptyState = (): FileState => ({
   jobs: {},
   commands: {},
   printerChecks: {},
+  printerHealth: {},
+  paperRolls: {},
   notionSyncs: {},
 });
 
@@ -44,6 +51,8 @@ export class FileRepository implements PrintDeskRepository {
         ...emptyState(),
         ...stored,
         printerChecks: stored.printerChecks ?? {},
+        printerHealth: stored.printerHealth ?? {},
+        paperRolls: stored.paperRolls ?? {},
         notionSyncs: stored.notionSyncs ?? {},
       };
     } catch (error) {
@@ -152,6 +161,50 @@ export class FileRepository implements PrintDeskRepository {
         updatedAt: new Date().toISOString(),
       });
       return { ...check };
+    });
+  }
+
+  async getPrinterHealth(printerId: string) {
+    return (await this.load()).printerHealth[printerId] ?? null;
+  }
+
+  updatePrinterHealth(printerId: string, update: PrinterHealthUpdate) {
+    return this.locked(async (state) => {
+      const now = new Date().toISOString();
+      const current = state.printerHealth[printerId];
+      const health: StoredPrinterHealth = {
+        printerId,
+        agentStatus: update.agentStatus ?? current?.agentStatus ?? "unknown",
+        printerStatus: update.printerStatus ?? current?.printerStatus ?? "unknown",
+        source: update.source,
+        error: update.error === undefined ? current?.error ?? null : update.error,
+        lastAgentSeenAt: update.agentStatus === "online" ? now : current?.lastAgentSeenAt ?? null,
+        lastPrinterSeenAt: update.printerStatus === "available" ? now : current?.lastPrinterSeenAt ?? null,
+        updatedAt: now,
+      };
+      state.printerHealth[printerId] = health;
+      return { ...health };
+    });
+  }
+
+  async getPaperRoll(printerId: string) {
+    return (await this.load()).paperRolls[printerId] ?? null;
+  }
+
+  replacePaperRoll(printerId: string, lengthMm: number, actor: StoredPaperRoll["changedBy"]) {
+    return this.locked(async (state) => {
+      const now = new Date().toISOString();
+      const roll: StoredPaperRoll = {
+        printerId,
+        lengthMm,
+        usedMm: 0,
+        printedTickets: 0,
+        changedBy: actor,
+        changedAt: now,
+        updatedAt: now,
+      };
+      state.paperRolls[printerId] = roll;
+      return { ...roll };
     });
   }
 
@@ -270,8 +323,31 @@ export class FileRepository implements PrintDeskRepository {
   completePrint(jobId: string, outcome: "printed" | "printed_simulated") {
     return this.locked(async (state) => {
       const job = state.jobs[jobId];
-      if (!job || job.status !== "printing") return null;
-      Object.assign(job, { status: outcome, updatedAt: new Date().toISOString() });
+      if (!job) return null;
+      const accountPaper = () => {
+        if (outcome !== "printed" || job.paperAccountedAt) return;
+        const now = new Date().toISOString();
+        const roll = state.paperRolls[job.printerId];
+        const paperLengthMm = job.paperLengthMm ?? 0;
+        if (roll && paperLengthMm > 0) {
+          roll.usedMm += paperLengthMm;
+          roll.printedTickets += 1;
+          roll.updatedAt = now;
+        }
+        job.paperAccountedAt = now;
+      };
+      if (job.status === outcome) {
+        accountPaper();
+        return { ...job };
+      }
+      if (job.status === "failed" && job.error?.startsWith("complete_failed")) {
+        Object.assign(job, { status: outcome, error: null, updatedAt: new Date().toISOString() });
+        accountPaper();
+        return { ...job };
+      }
+      if (job.status !== "printing") return null;
+      Object.assign(job, { status: outcome, error: null, updatedAt: new Date().toISOString() });
+      accountPaper();
       return { ...job };
     });
   }

@@ -49,6 +49,18 @@ async function render(request: StoredRequest, directory: string) {
   return Promise.all([readFile(join(directory, "preview.png")), readFile(join(directory, "ticket.escpos"))]);
 }
 
+export function escPosPaperLengthMm(bytes: Buffer) {
+  const raster = bytes.findIndex((value, index) => (
+    value === 0x1d
+    && bytes[index + 1] === 0x76
+    && bytes[index + 2] === 0x30
+  ));
+  if (raster < 0 || raster + 7 >= bytes.length) throw new Error("escpos_raster_not_found");
+  const heightPixels = bytes[raster + 6]! + (bytes[raster + 7]! << 8);
+  if (!heightPixels) throw new Error("escpos_empty_raster");
+  return Math.ceil(heightPixels / 8 + 12);
+}
+
 export class RenderWorker {
   constructor(
     private readonly repository: PrintDeskRepository,
@@ -75,7 +87,10 @@ export class RenderWorker {
     const directory = await mkdtemp(join(tmpdir(), "printdesk-render-"));
     try {
       const [preview, escpos] = await render(work.request, directory);
-      const paths = await this.artifacts.put(work.request.requestId, preview, escpos);
+      const paths = {
+        ...await this.artifacts.put(work.request.requestId, preview, escpos),
+        paperLengthMm: escPosPaperLengthMm(escpos),
+      };
       const completed = await this.repository.completeRender(work.job.jobId, event.eventId, paths);
       await this.publishReady(completed);
       return "rendered";

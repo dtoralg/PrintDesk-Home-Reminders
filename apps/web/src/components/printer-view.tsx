@@ -1,10 +1,11 @@
-import type { PrinterCheckView } from "@printdesk/shared-models";
+import type { PrinterCheckView, PrinterHealthView } from "@printdesk/shared-models";
 import { UiIcon } from "./ui-icon";
 
 interface PrinterViewProps {
   check: PrinterCheckView | null;
   checking: boolean;
   error: string | null;
+  health: PrinterHealthView | null;
   onCheck: () => void;
 }
 
@@ -17,9 +18,9 @@ function formatCheckTime(value: string) {
   }).format(new Date(value));
 }
 
-export function PrinterView({ check, checking, error, onCheck }: PrinterViewProps) {
-  const available = check?.status === "available";
-  const unavailable = check?.status === "unavailable";
+export function PrinterView({ check, checking, error, health, onCheck }: PrinterViewProps) {
+  const available = health?.printerStatus === "available";
+  const unavailable = health?.printerStatus === "unavailable";
   const resultTitle = available
     ? "Disponible"
     : unavailable
@@ -49,6 +50,17 @@ export function PrinterView({ check, checking, error, onCheck }: PrinterViewProp
           <strong>{resultTitle}</strong>
           <em>{check ? formatCheckTime(check.updatedAt) : "Todavía no se ha solicitado ninguna"}</em>
         </span>
+      </div>
+
+      <div className="printer-health-grid">
+        <article>
+          <span className={`status-dot ${health?.agentStatus === "online" ? "online" : health?.agentStatus === "offline" ? "offline" : "checking"}`} />
+          <span><small>AGENTE PC</small><strong>{health?.agentStatus === "online" ? "Conectado" : health?.agentStatus === "offline" ? "Desconectado" : "Comprobando"}</strong></span>
+        </article>
+        <article>
+          <span className={`status-dot ${available ? "online" : unavailable ? "offline" : "checking"}`} />
+          <span><small>IMPRESORA</small><strong>{available ? "Disponible" : unavailable ? "No disponible" : "Comprobando"}</strong></span>
+        </article>
       </div>
 
       {(error || check?.error) && <p className="form-error" role="alert">{error ?? `No se pudo conectar: ${check?.error}`}</p>}

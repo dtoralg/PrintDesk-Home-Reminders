@@ -79,6 +79,7 @@ Asigna en el proyecto:
 
 - **Cloud Datastore User** (`roles/datastore.user`)
 - **Pub/Sub Publisher** (`roles/pubsub.publisher`)
+- **Vertex AI User** (`roles/aiplatform.user`)
 
 En el bucket, pestaña **Permisos**, concede solo:
 
@@ -200,6 +201,32 @@ PRINTDESK_PRINTER_CHECK_TOPIC=printer-check-requested
 La cuenta `printdesk-api` debe tener **Pub/Sub Publisher** sobre ese topic. Si ya
 le concediste el rol a nivel de proyecto no añadas otra concesión duplicada.
 
+### Vertex AI para el modo sencillo
+
+Vertex forma parte de `printdesk-api`; no se crea otro servicio Cloud Run ni se
+guarda ninguna API key.
+
+1. Abre **APIs & Services > Library** en el proyecto `printdesk-503214`.
+2. Busca **Vertex AI API** (`aiplatform.googleapis.com`) y pulsa **Enable**.
+3. Abre **IAM & Admin > IAM**, localiza
+   `printdesk-api@printdesk-503214.iam.gserviceaccount.com` y edita el principal.
+4. Añade **Vertex AI User** (`roles/aiplatform.user`). No uses Vertex AI Admin.
+5. Abre **Cloud Run > printdesk-api > Edit and deploy new revision** y añade:
+
+   ```text
+   PRINTDESK_VERTEX_LOCATION=global
+   PRINTDESK_VERTEX_MODEL=gemini-2.5-flash
+   ```
+
+   `global` es la ubicación del endpoint del modelo; Cloud Run sigue desplegado
+   en `europe-southwest1`. No sustituye la región de Madrid.
+6. Despliega la revisión. La identidad de la propia revisión obtiene tokens de
+   Google automáticamente; no crees claves JSON ni secretos.
+
+La PWA invoca `POST /v1/tickets/interpret` con su ID token de Firebase. Vertex
+solo devuelve los cinco campos de `RequestInput`; la API vuelve a validarlos
+antes de que el flujo normal pueda crear el ticket.
+
 ## 10. Notion unilateral
 
 Esta integración es independiente del renderer: un fallo de Notion nunca
@@ -318,3 +345,5 @@ Desde la consola verifica:
 - [Crear cuentas de servicio](https://cloud.google.com/iam/docs/service-accounts-create)
 - [Desplegar imágenes en Cloud Run](https://cloud.google.com/run/docs/deploying)
 - [Triggers de Cloud Build con GitHub](https://cloud.google.com/build/docs/automate-builds)
+- [Google Gen AI SDK y Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/sdks/overview)
+- [Salida JSON controlada](https://cloud.google.com/vertex-ai/generative-ai/docs/multimodal/control-generated-output)

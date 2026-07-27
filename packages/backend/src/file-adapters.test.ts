@@ -96,7 +96,9 @@ describe("FileRepository", () => {
     await repository.completeRender(graph.job.jobId, graph.event.eventId, {
       previewPath: "preview",
       escposPath: "escpos",
+      paperLengthMm: 125,
     });
+    await repository.replacePaperRoll("home", 1_000, graph.request.createdBy);
 
     await expect(repository.claimJob(graph.job.jobId)).resolves.toMatchObject({ status: "claimed" });
     await expect(repository.updatePrintStatus(graph.job.jobId, "checking_printer")).resolves.toMatchObject({
@@ -105,7 +107,16 @@ describe("FileRepository", () => {
     await expect(repository.updatePrintStatus(graph.job.jobId, "printing")).resolves.toMatchObject({
       status: "printing",
     });
+    await expect(repository.failPrint(graph.job.jobId, "complete_failed (503): temporary", false)).resolves.toMatchObject({
+      status: "failed",
+    });
     await expect(repository.completePrint(graph.job.jobId, "printed")).resolves.toMatchObject({ status: "printed" });
+    await expect(repository.completePrint(graph.job.jobId, "printed")).resolves.toMatchObject({ status: "printed" });
+    await expect(repository.getPaperRoll("home")).resolves.toMatchObject({
+      lengthMm: 1_000,
+      usedMm: 125,
+      printedTickets: 1,
+    });
   });
 
   it("mantiene una copia unilateral de Notion idempotente", async () => {
@@ -173,5 +184,22 @@ describe("FileRepository", () => {
       status: "available",
     });
     await expect(repository.claimPrinterCheck(check.checkId)).resolves.toBeNull();
+
+    await expect(repository.updatePrinterHealth("home", {
+      agentStatus: "online",
+      printerStatus: "available",
+      source: "startup_check",
+      error: null,
+    })).resolves.toMatchObject({
+      printerId: "home",
+      agentStatus: "online",
+      printerStatus: "available",
+      source: "startup_check",
+      error: null,
+    });
+    await expect(repository.getPrinterHealth("home")).resolves.toMatchObject({
+      agentStatus: "online",
+      printerStatus: "available",
+    });
   });
 });

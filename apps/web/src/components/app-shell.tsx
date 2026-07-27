@@ -1,5 +1,5 @@
 import type { User } from "firebase/auth";
-import type { PrinterCheckView } from "@printdesk/shared-models";
+import type { PrinterHealthView } from "@printdesk/shared-models";
 import type { AppSection } from "@/lib/web-types";
 import { UiIcon } from "./ui-icon";
 
@@ -7,7 +7,7 @@ interface AppShellProps {
   active: AppSection;
   children: React.ReactNode;
   pendingCount: number;
-  printerCheck: PrinterCheckView | null;
+  health: PrinterHealthView | null;
   user: User | null;
   onNavigate: (section: AppSection) => void;
 }
@@ -20,18 +20,24 @@ const navigation = [
   ["settings", "settings", "Ajustes"],
 ] as const;
 
-export function AppShell({ active, children, pendingCount, printerCheck, user, onNavigate }: AppShellProps) {
+export function AppShell({ active, children, pendingCount, health, user, onNavigate }: AppShellProps) {
   const firstName = user?.displayName?.split(" ")[0] ?? "Dani";
-  const checkResponded = printerCheck && ["available", "unavailable"].includes(printerCheck.status);
-  const agentLabel = checkResponded ? "Conectado" : printerCheck ? "Contactando" : "Configurado";
-  const printerLabel = printerCheck?.status === "available"
+  const agentLabel = health?.agentStatus === "online"
+    ? "Conectado"
+    : health?.agentStatus === "offline"
+      ? "Desconectado"
+      : health?.agentStatus === "checking"
+        ? "Contactando"
+        : "Sin comprobar";
+  const printerLabel = health?.printerStatus === "available"
     ? "Disponible"
-    : printerCheck?.status === "unavailable"
+    : health?.printerStatus === "unavailable"
       ? "No disponible"
-      : printerCheck
+      : health?.printerStatus === "checking"
         ? "Comprobando"
-        : "Configurada";
-  const dotClass = printerCheck?.status === "unavailable" ? "status-dot offline" : "status-dot";
+        : "Sin comprobar";
+  const agentDotClass = `status-dot ${health?.agentStatus === "online" ? "online" : health?.agentStatus === "offline" ? "offline" : "checking"}`;
+  const printerDotClass = `status-dot ${health?.printerStatus === "available" ? "online" : health?.printerStatus === "unavailable" ? "offline" : "checking"}`;
   return (
     <div className={`app-frame section-${active}`}>
       <aside className="sidebar">
@@ -47,11 +53,11 @@ export function AppShell({ active, children, pendingCount, printerCheck, user, o
         </nav>
         <div className="sidebar-status">
           <p className="micro-label">AGENTE PC</p>
-          <p><span className="status-dot" />{agentLabel}</p>
-          <small>{checkResponded ? "Respuesta reciente" : "Tarea automática"}</small>
+          <p><span className={agentDotClass} />{agentLabel}</p>
+          <small>{health?.lastAgentSeenAt ? "Respuesta confirmada" : "Comprobación automática"}</small>
           <hr />
           <p className="micro-label">IMPRESORA CASA</p>
-          <p><span className={dotClass} />{printerLabel}</p>
+          <p><span className={printerDotClass} />{printerLabel}</p>
           <small>TCP / 192.168.1.153</small>
         </div>
         <button className="profile-button" onClick={() => onNavigate("settings")} type="button">

@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
+import { GoogleAuth } from "google-auth-library";
 import {
   createApiDependencies,
   type ArtifactStore,
@@ -10,14 +11,20 @@ import {
   type PrintDeskRepository,
   type RequestGraph,
   type StoredNotionSync,
+  type StoredPaperRoll,
   type StoredPrinterCheck,
   type StoredPrintJob,
+  type TicketInterpreter,
+  VertexTicketInterpreter,
   isAllowedNotionUrl,
 } from "@printdesk/backend";
 import {
   createRequestCommandSchema,
+  interpretTicketCommandSchema,
   type PrinterCheckRequestedEvent,
   type PrinterCheckView,
+  type PrinterHealthView,
+  type PaperRollView,
   type CreateRequestResult,
   type NotionSyncView,
   type PrintJobView,
@@ -34,6 +41,7 @@ export interface AppOptions {
   artifacts?: ArtifactStore;
   events?: EventPublisher;
   printerChecks?: PrinterCheckPublisher;
+  ticketInterpreter?: TicketInterpreter;
   deviceAuthenticator?: DeviceAuthenticator;
 }
 
@@ -75,6 +83,26 @@ function printerCheckView(check: StoredPrinterCheck): PrinterCheckView {
   };
 }
 
+function printerHealthView(health: Awaited<ReturnType<PrintDeskRepository["getPrinterHealth"]>>): PrinterHealthView | null {
+  return health ? { ...health } : null;
+}
+
+function paperRollView(roll: StoredPaperRoll): PaperRollView {
+  const remainingMm = Math.max(0, roll.lengthMm - roll.usedMm);
+  const averageTicketMm = roll.printedTickets > 0 ? roll.usedMm / roll.printedTickets : 0;
+  return {
+    printerId: roll.printerId,
+    lengthMeters: roll.lengthMm / 1_000,
+    usedMeters: roll.usedMm / 1_000,
+    remainingMeters: remainingMm / 1_000,
+    remainingPercent: roll.lengthMm > 0 ? Math.round(remainingMm / roll.lengthMm * 100) : 0,
+    printedTickets: roll.printedTickets,
+    estimatedTicketsRemaining: averageTicketMm > 0 ? Math.floor(remainingMm / averageTicketMm) : null,
+    changedAt: roll.changedAt,
+    updatedAt: roll.updatedAt,
+  };
+}
+
 function notionView(sync: StoredNotionSync | null): NotionSyncView {
   return sync ? {
     status: sync.status,
@@ -103,6 +131,19 @@ export async function buildApp(options: AppOptions = {}) {
   };
   const baseUrl = options.publicBaseUrl ?? process.env.PRINTDESK_PUBLIC_BASE_URL ?? "http://localhost:8080";
   const deviceAuthenticator = options.deviceAuthenticator ?? productionDeviceAuthenticator();
+  const vertexAuth = new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/cloud-platform"] });
+  const ticketInterpreter = options.ticketInterpreter ?? (process.env.PRINTDESK_BACKEND === "gcp"
+    ? new VertexTicketInterpreter({
+      projectId: process.env.GOOGLE_CLOUD_PROJECT!,
+      location: process.env.PRINTDESK_VERTEX_LOCATION ?? "global",
+      model: process.env.PRINTDESK_VERTEX_MODEL ?? "gemini-2.5-flash",
+      accessToken: async () => {
+        const token = await vertexAuth.getAccessToken();
+        if (!token) throw new Error("vertex_access_token_unavailable");
+        return token;
+      },
+    })
+    : null);
 
   async function authorizeDevice(authorization: string | undefined) {
     if (process.env.PRINTDESK_ALLOW_DEV_AUTH === "true" && process.env.NODE_ENV !== "production") return true;
@@ -126,7 +167,32 @@ export async function buildApp(options: AppOptions = {}) {
     return check?.requestedBy.uid === uid ? check : null;
   }
 
+  async function reconcileCompletedDelivery(job: StoredPrintJob) {
+    if (job.status !== "failed" || !job.error?.startsWith("complete_failed")) return job;
+    return await repository.completePrint(job.jobId, "printed") ?? job;
+  }
+
   app.get("/health", async () => ({ status: "ok", backend: process.env.PRINTDESK_BACKEND ?? "local" }));
+
+  app.post("/v1/tickets/interpret", async (request, reply) => {
+    try {
+      await authenticate(request.headers.authorization);
+    } catch {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    const command = interpretTicketCommandSchema.safeParse(request.body);
+    if (!command.success) return reply.code(400).send({ error: "invalid_interpretation_request" });
+    if (!ticketInterpreter) return reply.code(503).send({ error: "ticket_interpreter_unavailable" });
+    try {
+      return await ticketInterpreter.interpret(command.data.text, {
+        now: new Date().toISOString(),
+        timeZone: "Europe/Madrid",
+      });
+    } catch (error) {
+      request.log.error({ error }, "Unable to interpret ticket with Vertex AI");
+      return reply.code(503).send({ error: "ticket_interpretation_failed" });
+    }
+  });
 
   app.post("/v1/requests", async (request, reply) => {
     let actor;
@@ -172,6 +238,8 @@ export async function buildApp(options: AppOptions = {}) {
         error: null,
         renderLeaseEventId: null,
         renderLeaseExpiresAt: null,
+        paperLengthMm: null,
+        paperAccountedAt: null,
         createdAt: now,
         updatedAt: now,
       },
@@ -213,14 +281,17 @@ export async function buildApp(options: AppOptions = {}) {
     if (!parsed.success) return reply.code(400).send({ error: "invalid_query" });
     const entries = await repository.listRequestsByOwner(actor.uid, parsed.data.limit);
     const result: RequestHistoryResult = {
-      items: await Promise.all(entries.map(async ({ request: storedRequest, job }) => ({
-        requestId: storedRequest.requestId,
-        shortUrl: storedRequest.shortUrl,
-        request: storedRequest.input,
-        createdAt: storedRequest.createdAt,
-        job: view(job, baseUrl),
-        notion: notionView(await repository.getNotionSync(storedRequest.requestId)),
-      }))),
+      items: await Promise.all(entries.map(async ({ request: storedRequest, job }) => {
+        const reconciledJob = await reconcileCompletedDelivery(job);
+        return {
+          requestId: storedRequest.requestId,
+          shortUrl: storedRequest.shortUrl,
+          request: storedRequest.input,
+          createdAt: storedRequest.createdAt,
+          job: view(reconciledJob, baseUrl),
+          notion: notionView(await repository.getNotionSync(storedRequest.requestId)),
+        };
+      })),
     };
     return result;
   });
@@ -238,7 +309,8 @@ export async function buildApp(options: AppOptions = {}) {
     if (!storedRequest || storedRequest.createdBy.uid !== actor.uid) {
       return reply.code(404).send({ error: "not_found" });
     }
-    const job = await repository.getJobByRequestId(parsed.data);
+    const storedJob = await repository.getJobByRequestId(parsed.data);
+    const job = storedJob ? await reconcileCompletedDelivery(storedJob) : null;
     if (!job) return reply.code(404).send({ error: "not_found" });
     const result: RequestStateResult = {
       requestId: storedRequest.requestId,
@@ -262,6 +334,47 @@ export async function buildApp(options: AppOptions = {}) {
     return check ? printerCheckView(check) : reply.code(204).send();
   });
 
+  app.get("/v1/printers/:printerId/health", async (request, reply) => {
+    let actor;
+    try {
+      actor = await authenticate(request.headers.authorization);
+    } catch {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    void actor;
+    const parsed = printerIdSchema.safeParse((request.params as { printerId: string }).printerId);
+    if (!parsed.success || parsed.data !== "home") return reply.code(400).send({ error: "invalid_printer_id" });
+    const health = printerHealthView(await repository.getPrinterHealth(parsed.data));
+    return health ?? reply.code(204).send();
+  });
+
+  app.get("/v1/printers/:printerId/paper-roll", async (request, reply) => {
+    try {
+      await authenticate(request.headers.authorization);
+    } catch {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    const parsed = printerIdSchema.safeParse((request.params as { printerId: string }).printerId);
+    if (!parsed.success || parsed.data !== "home") return reply.code(400).send({ error: "invalid_printer_id" });
+    const roll = await repository.getPaperRoll(parsed.data);
+    return roll ? paperRollView(roll) : reply.code(204).send();
+  });
+
+  app.post("/v1/printers/:printerId/paper-roll", async (request, reply) => {
+    let actor;
+    try {
+      actor = await authenticate(request.headers.authorization);
+    } catch {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    const parsed = printerIdSchema.safeParse((request.params as { printerId: string }).printerId);
+    if (!parsed.success || parsed.data !== "home") return reply.code(400).send({ error: "invalid_printer_id" });
+    const body = z.object({ lengthMeters: z.number().min(0.1).max(200) }).safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_roll_length" });
+    const roll = await repository.replacePaperRoll(parsed.data, Math.round(body.data.lengthMeters * 1_000), actor);
+    return paperRollView(roll);
+  });
+
   app.post("/v1/printers/:printerId/checks", async (request, reply) => {
     let actor;
     try {
@@ -271,17 +384,28 @@ export async function buildApp(options: AppOptions = {}) {
     }
     const parsed = printerIdSchema.safeParse((request.params as { printerId: string }).printerId);
     if (!parsed.success || parsed.data !== "home") return reply.code(400).send({ error: "invalid_printer_id" });
+    const body = z.object({
+      source: z.enum(["startup_check", "manual_check"]).default("manual_check"),
+    }).safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: "invalid_check_request" });
     const now = new Date().toISOString();
     const check: StoredPrinterCheck = {
       checkId: randomUUID(),
       printerId: parsed.data,
       requestedBy: actor,
+      source: body.data.source,
       status: "pending",
       error: null,
       requestedAt: now,
       updatedAt: now,
     };
     await repository.createPrinterCheck(check);
+    await repository.updatePrinterHealth(check.printerId, {
+      agentStatus: "checking",
+      printerStatus: "checking",
+      source: body.data.source,
+      error: null,
+    });
     const event: PrinterCheckRequestedEvent = {
       eventId: randomUUID(),
       checkId: check.checkId,
@@ -293,6 +417,12 @@ export async function buildApp(options: AppOptions = {}) {
     } catch (error) {
       request.log.error({ error, checkId: check.checkId }, "Unable to publish printer-check.requested");
       await repository.completePrinterCheck(check.checkId, false, "check_dispatch_failed");
+      await repository.updatePrinterHealth(check.printerId, {
+        agentStatus: "offline",
+        printerStatus: "unknown",
+        source: body.data.source,
+        error: "check_dispatch_failed",
+      });
       return reply.code(503).send({ error: "check_dispatch_failed", checkId: check.checkId });
     }
     return reply.code(202).send(printerCheckView(check));
@@ -309,6 +439,34 @@ export async function buildApp(options: AppOptions = {}) {
     if (!parsed.success) return reply.code(400).send({ error: "invalid_check_id" });
     const check = await ownedPrinterCheck(parsed.data, actor.uid);
     if (!check) return reply.code(404).send({ error: "not_found" });
+    return printerCheckView(check);
+  });
+
+  app.post("/v1/printer-checks/:checkId/timeout", async (request, reply) => {
+    let actor;
+    try {
+      actor = await authenticate(request.headers.authorization);
+    } catch {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    const parsed = idSchema.safeParse((request.params as { checkId: string }).checkId);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_check_id" });
+    const current = await ownedPrinterCheck(parsed.data, actor.uid);
+    if (!current) return reply.code(404).send({ error: "not_found" });
+    if (["available", "unavailable"].includes(current.status)) return printerCheckView(current);
+    const agentResponded = current.status === "checking";
+    const error = agentResponded ? "printer_check_timeout" : "agent_timeout";
+    const check = await repository.completePrinterCheck(parsed.data, false, error);
+    if (!check) {
+      const latest = await ownedPrinterCheck(parsed.data, actor.uid);
+      return latest ? printerCheckView(latest) : reply.code(409).send({ error: "check_not_active" });
+    }
+    await repository.updatePrinterHealth(check.printerId, {
+      agentStatus: agentResponded ? "online" : "offline",
+      printerStatus: agentResponded ? "unavailable" : "unknown",
+      source: check.source ?? "manual_check",
+      error,
+    });
     return printerCheckView(check);
   });
 
@@ -346,6 +504,11 @@ export async function buildApp(options: AppOptions = {}) {
     if (!parsed.success) return reply.code(400).send({ error: "invalid_job_id" });
     const job = await repository.claimJob(parsed.data);
     if (!job) return reply.code(409).send({ error: "job_not_queued" });
+    await repository.updatePrinterHealth(job.printerId, {
+      agentStatus: "online",
+      source: "print",
+      error: null,
+    }).catch((error) => request.log.error({ error, jobId: job.jobId }, "Unable to update printer health"));
     return { artifactUrl: `/v1/print-jobs/${job.jobId}/artifact` };
   });
 
@@ -366,6 +529,12 @@ export async function buildApp(options: AppOptions = {}) {
     if (!body.success) return reply.code(400).send({ error: "invalid_status" });
     const job = await repository.updatePrintStatus(parsed.data, body.data.status);
     if (!job) return reply.code(409).send({ error: "invalid_status_transition" });
+    await repository.updatePrinterHealth(job.printerId, {
+      agentStatus: "online",
+      printerStatus: body.data.status === "printing" ? "available" : "checking",
+      source: "print",
+      error: null,
+    }).catch((error) => request.log.error({ error, jobId: job.jobId }, "Unable to update printer health"));
     return view(job, baseUrl);
   });
 
@@ -377,6 +546,12 @@ export async function buildApp(options: AppOptions = {}) {
     if (!body.success) return reply.code(400).send({ error: "invalid_outcome" });
     const job = await repository.completePrint(parsed.data, body.data.outcome);
     if (!job) return reply.code(409).send({ error: "job_not_printing" });
+    await repository.updatePrinterHealth(job.printerId, {
+      agentStatus: "online",
+      printerStatus: "available",
+      source: "print",
+      error: null,
+    }).catch((error) => request.log.error({ error, jobId: job.jobId }, "Unable to update printer health"));
     return view(job, baseUrl);
   });
 
@@ -386,8 +561,31 @@ export async function buildApp(options: AppOptions = {}) {
     if (!parsed.success) return reply.code(400).send({ error: "invalid_job_id" });
     const body = z.object({ error: z.string().trim().min(1).max(500), retryable: z.boolean() }).safeParse(request.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_failure" });
+    const activeJob = await repository.getJob(parsed.data);
+    if (activeJob?.status === "printing" && body.data.error.startsWith("complete_failed")) {
+      const recovered = await repository.completePrint(parsed.data, "printed");
+      if (recovered) {
+        await repository.updatePrinterHealth(recovered.printerId, {
+          agentStatus: "online",
+          printerStatus: "available",
+          source: "print",
+          error: null,
+        }).catch((error) => request.log.error({ error, jobId: recovered.jobId }, "Unable to update printer health"));
+        return view(recovered, baseUrl);
+      }
+    }
     const job = await repository.failPrint(parsed.data, body.data.error, body.data.retryable);
     if (!job) return reply.code(409).send({ error: "job_not_active" });
+    if (activeJob) {
+      await repository.updatePrinterHealth(job.printerId, {
+        agentStatus: "online",
+        ...(activeJob.status === "checking_printer" || activeJob.status === "printing"
+          ? { printerStatus: "unavailable" as const }
+          : {}),
+        source: "print",
+        error: body.data.error,
+      }).catch((error) => request.log.error({ error, jobId: job.jobId }, "Unable to update printer health"));
+    }
     return view(job, baseUrl);
   });
 
@@ -397,6 +595,12 @@ export async function buildApp(options: AppOptions = {}) {
     if (!parsed.success) return reply.code(400).send({ error: "invalid_check_id" });
     const check = await repository.claimPrinterCheck(parsed.data);
     if (!check) return reply.code(409).send({ error: "check_not_pending" });
+    await repository.updatePrinterHealth(check.printerId, {
+      agentStatus: "online",
+      printerStatus: "checking",
+      source: check.source ?? "manual_check",
+      error: null,
+    });
     return printerCheckView(check);
   });
 
@@ -411,6 +615,12 @@ export async function buildApp(options: AppOptions = {}) {
     if (!body.success) return reply.code(400).send({ error: "invalid_outcome" });
     const check = await repository.completePrinterCheck(parsed.data, body.data.available, body.data.error);
     if (!check) return reply.code(409).send({ error: "check_not_active" });
+    await repository.updatePrinterHealth(check.printerId, {
+      agentStatus: "online",
+      printerStatus: body.data.available ? "available" : "unavailable",
+      source: check.source ?? "manual_check",
+      error: body.data.error,
+    });
     return printerCheckView(check);
   });
 

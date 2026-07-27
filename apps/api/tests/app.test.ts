@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FileRepository, type ArtifactStore, type EventPublisher, type RequestGraph } from "@printdesk/backend";
+import { FileRepository, type ArtifactStore, type EventPublisher, type RequestGraph, type TicketInterpreter } from "@printdesk/backend";
 import { buildApp } from "../src/app.js";
 
 let directory: string;
@@ -17,6 +17,34 @@ afterEach(async () => {
 });
 
 describe("API contract", () => {
+  it("estructura el modo sencillo antes de entrar en el flujo normal", async () => {
+    const interpreter: TicketInterpreter = {
+      interpret: async () => ({
+        request: {
+          type: "task",
+          title: "Llamar a Sanitas",
+          body: "Preguntar por la cobertura dental.",
+          important: true,
+          dueAt: null,
+        },
+        model: "test-model",
+        interpretedAt: "2026-07-27T18:00:00.000Z",
+      }),
+    };
+    const app = await buildApp({ dataDir: directory, ticketInterpreter: interpreter });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/tickets/interpret",
+      payload: { text: "Tengo que llamar a Sanitas por lo del dentista, es importante" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      request: { type: "task", title: "Llamar a Sanitas", important: true },
+      model: "test-model",
+    });
+    await app.close();
+  });
+
   it("rejects identity and status fields supplied by a client", async () => {
     const app = await buildApp({ dataDir: directory });
     const response = await app.inject({
@@ -68,11 +96,11 @@ describe("API contract", () => {
         jobId: "22222222-2222-4222-8222-222222222222",
         requestId: "11111111-1111-4111-8111-111111111111",
         printerId: "home",
-        status: "printed",
+        status: "failed",
         previewPath: null,
         escposPath: null,
         attempts: 1,
-        error: null,
+        error: "complete_failed (503): temporary",
         renderLeaseEventId: null,
         renderLeaseExpiresAt: null,
         createdAt: now,
@@ -167,6 +195,7 @@ describe("API contract", () => {
     await repository.completeRender(graph.job.jobId, graph.event.eventId, {
       previewPath: "preview.png",
       escposPath: "ticket.escpos",
+      paperLengthMm: 250,
     });
     const app = await buildApp({
       repository,
@@ -177,6 +206,14 @@ describe("API contract", () => {
       events: { publish: async () => "message-1" },
       publicBaseUrl: "http://localhost:8080",
     });
+
+    const newRoll = await app.inject({
+      method: "POST",
+      url: "/v1/printers/home/paper-roll",
+      payload: { lengthMeters: 80 },
+    });
+    expect(newRoll.statusCode).toBe(200);
+    expect(newRoll.json()).toMatchObject({ lengthMeters: 80, usedMeters: 0, printedTickets: 0 });
 
     expect((await app.inject({ method: "POST", url: `/v1/print-jobs/${graph.job.jobId}/claim` })).json())
       .toMatchObject({ artifactUrl: `/v1/print-jobs/${graph.job.jobId}/artifact` });
@@ -192,18 +229,42 @@ describe("API contract", () => {
       payload: { status: "printing" },
     });
     expect(printing.json()).toMatchObject({ status: "printing" });
+    const healthDuringPrint = await app.inject({ method: "GET", url: "/v1/printers/home/health" });
+    expect(healthDuringPrint.statusCode).toBe(200);
+    expect(healthDuringPrint.json()).toMatchObject({
+      agentStatus: "online",
+      printerStatus: "available",
+      source: "print",
+    });
     const completed = await app.inject({
+      method: "POST",
+      url: `/v1/print-jobs/${graph.job.jobId}/fail`,
+      payload: { error: "complete_failed (503): temporary", retryable: false },
+    });
+    expect(completed.json()).toMatchObject({ status: "printed" });
+    const repeatedCompletion = await app.inject({
       method: "POST",
       url: `/v1/print-jobs/${graph.job.jobId}/complete`,
       payload: { outcome: "printed" },
     });
-    expect(completed.json()).toMatchObject({ status: "printed" });
+    expect(repeatedCompletion.json()).toMatchObject({ status: "printed" });
+    const paperRoll = await app.inject({ method: "GET", url: "/v1/printers/home/paper-roll" });
+    expect(paperRoll.json()).toMatchObject({
+      lengthMeters: 80,
+      usedMeters: 0.25,
+      remainingMeters: 79.75,
+      printedTickets: 1,
+    });
     await app.close();
   });
 
   it("conserva una comprobación de impresora hasta que responde el agente", async () => {
     const app = await buildApp({ dataDir: directory });
-    const created = await app.inject({ method: "POST", url: "/v1/printers/home/checks" });
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/printers/home/checks",
+      payload: { source: "startup_check" },
+    });
     expect(created.statusCode).toBe(202);
     const pending = created.json() as { checkId: string; status: string };
     expect(pending.status).toBe("pending");
@@ -229,6 +290,28 @@ describe("API contract", () => {
     const latest = await app.inject({ method: "GET", url: "/v1/printers/home/checks/latest" });
     expect(latest.statusCode).toBe(200);
     expect(latest.json()).toMatchObject({ checkId: pending.checkId, status: "available" });
+    const health = await app.inject({ method: "GET", url: "/v1/printers/home/health" });
+    expect(health.statusCode).toBe(200);
+    expect(health.json()).toMatchObject({
+      agentStatus: "online",
+      printerStatus: "available",
+      source: "startup_check",
+    });
+
+    const timedCheck = await app.inject({
+      method: "POST",
+      url: "/v1/printers/home/checks",
+      payload: { source: "manual_check" },
+    });
+    const timedOut = await app.inject({
+      method: "POST",
+      url: `/v1/printer-checks/${timedCheck.json().checkId}/timeout`,
+    });
+    expect(timedOut.json()).toMatchObject({ status: "unavailable", error: "agent_timeout" });
+    expect((await app.inject({ method: "GET", url: "/v1/printers/home/health" })).json()).toMatchObject({
+      agentStatus: "offline",
+      printerStatus: "unknown",
+    });
     await app.close();
   });
 });

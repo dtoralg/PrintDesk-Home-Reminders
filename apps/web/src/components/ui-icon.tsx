@@ -14,7 +14,8 @@ type IconName =
   | "user"
   | "calendar"
   | "bell"
-  | "logout";
+  | "logout"
+  | "sparkles";
 
 interface UiIconProps {
   name: IconName;
@@ -38,6 +39,7 @@ const paths: Record<IconName, React.ReactNode> = {
   calendar: <><rect x="3" y="5" width="18" height="16" rx="1" /><path d="M8 3v4M16 3v4M3 10h18" /></>,
   bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></>,
   logout: <><path d="M10 4H5v16h5M14 8l4 4-4 4M8 12h10" /></>,
+  sparkles: <><path d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3Z" /><path d="m18.5 14 .8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2ZM5 14l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2Z" /></>,
 };
 
 export function UiIcon({ name, size = 20 }: UiIconProps) {

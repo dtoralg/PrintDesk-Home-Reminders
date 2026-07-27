@@ -1,4 +1,5 @@
 import type {
+  InterpretTicketResult,
   PrinterCheckRequestedEvent,
   PrintJobReadyEvent,
   PrintJobStatus,
@@ -10,7 +11,10 @@ import type {
   NotionSyncWork,
   RenderWork,
   RequestHistoryEntry,
+  PrinterHealthUpdate,
   StoredPrinterCheck,
+  StoredPrinterHealth,
+  StoredPaperRoll,
   StoredNotionSync,
   RequestGraph,
   StoredPrintJob,
@@ -30,6 +34,10 @@ export interface PrintDeskRepository {
   getLatestPrinterCheck(uid: string, printerId: string): Promise<StoredPrinterCheck | null>;
   claimPrinterCheck(checkId: string): Promise<StoredPrinterCheck | null>;
   completePrinterCheck(checkId: string, available: boolean, error: string | null): Promise<StoredPrinterCheck | null>;
+  getPrinterHealth(printerId: string): Promise<StoredPrinterHealth | null>;
+  updatePrinterHealth(printerId: string, update: PrinterHealthUpdate): Promise<StoredPrinterHealth>;
+  getPaperRoll(printerId: string): Promise<StoredPaperRoll | null>;
+  replacePaperRoll(printerId: string, lengthMm: number, actor: StoredPaperRoll["changedBy"]): Promise<StoredPaperRoll>;
   beginNotionSync(event: RequestCreatedEvent): Promise<NotionSyncWork | null>;
   completeNotionSync(
     requestId: string,
@@ -68,4 +76,8 @@ export interface PrinterCheckPublisher {
 
 export interface NotionPageWriter {
   createPage(request: StoredRequest): Promise<{ pageId: string; pageUrl: string }>;
+}
+
+export interface TicketInterpreter {
+  interpret(text: string, context: { now: string; timeZone: string }): Promise<InterpretTicketResult>;
 }
