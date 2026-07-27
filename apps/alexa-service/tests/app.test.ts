@@ -41,6 +41,34 @@ function config(requireConfirmation = false) {
 }
 
 describe("Alexa adapter", () => {
+  it("inicia el diálogo de dos turnos solicitando el contenido libre", async () => {
+    const client = { createFromText: vi.fn<PrintDeskAlexaClient["createFromText"]>() };
+    const app = buildAlexaApp(config(), verifier, client);
+    const response = await app.inject({
+      method: "POST",
+      url: "/integrations/alexa",
+      headers: { "content-type": "application/json" },
+      payload: envelope({
+        request: {
+          type: "LaunchRequest",
+          requestId: "amzn1.echo-api.request.launch123",
+          locale: "es-ES",
+        },
+      }),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().response.directives).toEqual([
+      expect.objectContaining({
+        type: "Dialog.ElicitSlot",
+        slotToElicit: "text",
+        updatedIntent: expect.objectContaining({ name: "CaptureIntent" }),
+      }),
+    ]);
+    expect(response.json().response.shouldEndSession).toBe(false);
+    expect(client.createFromText).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it("verifica identidad, conserva requestId y envía texto libre a PrintDesk", async () => {
     const createFromText = vi.fn<PrintDeskAlexaClient["createFromText"]>(async () => ({
       request: {

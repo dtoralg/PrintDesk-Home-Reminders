@@ -41,7 +41,7 @@
             }
           ],
           "samples": [
-            "{text}"
+            "quiero imprimir {text}"
           ]
         },
         {
@@ -70,6 +70,37 @@
         }
       ],
       "types": []
-    }
+    },
+    "dialog": {
+      "delegationStrategy": "SKILL_RESPONSE",
+      "intents": [
+        {
+          "name": "CaptureIntent",
+          "confirmationRequired": false,
+          "slots": [
+            {
+              "name": "text",
+              "type": "AMAZON.SearchQuery",
+              "elicitationRequired": true,
+              "confirmationRequired": false,
+              "prompts": {
+                "elicitation": "Elicit.Slot.CaptureIntent.text"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "prompts": [
+      {
+        "id": "Elicit.Slot.CaptureIntent.text",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "¿Qué quieres imprimir?"
+          }
+        ]
+      }
+    ]
   }
 }

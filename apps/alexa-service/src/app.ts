@@ -70,6 +70,36 @@ function speech(text: string, shouldEndSession: boolean, sessionAttributes: Reco
   };
 }
 
+function elicitPrintContent() {
+  return {
+    version: "1.0",
+    sessionAttributes: {},
+    response: {
+      outputSpeech: {
+        type: "PlainText",
+        text: "¿Qué quieres imprimir?",
+      },
+      directives: [
+        {
+          type: "Dialog.ElicitSlot",
+          slotToElicit: "text",
+          updatedIntent: {
+            name: "CaptureIntent",
+            confirmationStatus: "NONE",
+            slots: {
+              text: {
+                name: "text",
+                confirmationStatus: "NONE",
+              },
+            },
+          },
+        },
+      ],
+      shouldEndSession: false,
+    },
+  };
+}
+
 function textSlot(envelope: z.infer<typeof alexaEnvelopeSchema>) {
   return envelope.request.intent?.slots?.text?.value?.trim() ?? "";
 }
@@ -141,7 +171,7 @@ export function buildAlexaApp(
     const requestType = envelope.request.type;
     const intentName = envelope.request.intent?.name;
     if (requestType === "LaunchRequest") {
-      return speech("¿Qué quieres imprimir?", false);
+      return elicitPrintContent();
     }
     if (requestType === "SessionEndedRequest"
       || intentName === "AMAZON.StopIntent"
