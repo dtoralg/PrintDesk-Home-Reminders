@@ -19,14 +19,29 @@ function formatCheckTime(value: string) {
 }
 
 export function PrinterView({ check, checking, error, health, onCheck }: PrinterViewProps) {
-  const available = health?.printerStatus === "available";
-  const unavailable = health?.printerStatus === "unavailable";
-  const resultTitle = available
+  const checkInProgress = checking || check?.status === "pending" || check?.status === "checking";
+  const available = check?.status === "available" || (!checkInProgress && health?.printerStatus === "available");
+  const unavailable = check?.status === "unavailable" || (!checkInProgress && health?.printerStatus === "unavailable");
+  const resultTitle = checkInProgress
+    ? "Comprobando…"
+    : available
+      ? "Disponible"
+      : unavailable
+        ? "No disponible"
+        : "Sin comprobar";
+  const agentLabel = health?.agentStatus === "online"
+    ? "Conectado"
+    : health?.agentStatus === "offline"
+      ? "Desconectado"
+      : health?.agentStatus === "checking"
+        ? "Contactando"
+        : "Sin comprobar";
+  const printerLabel = health?.printerStatus === "available"
     ? "Disponible"
-    : unavailable
+    : health?.printerStatus === "unavailable"
       ? "No disponible"
-      : checking
-        ? "Comprobando…"
+      : health?.printerStatus === "checking"
+        ? "Comprobando"
         : "Sin comprobar";
 
   return (
@@ -43,7 +58,7 @@ export function PrinterView({ check, checking, error, health, onCheck }: Printer
 
       <div className={`printer-check-result ${available ? "available" : unavailable || error ? "unavailable" : ""}`}>
         <span className="step-marker">
-          {available ? <UiIcon name="check" size={16} /> : unavailable || error ? "!" : checking ? <span className="spinner" /> : null}
+          {checkInProgress ? <span className="spinner" /> : available ? <UiIcon name="check" size={16} /> : unavailable || error ? "!" : null}
         </span>
         <span>
           <small>ÚLTIMA COMPROBACIÓN</small>
@@ -55,11 +70,11 @@ export function PrinterView({ check, checking, error, health, onCheck }: Printer
       <div className="printer-health-grid">
         <article>
           <span className={`status-dot ${health?.agentStatus === "online" ? "online" : health?.agentStatus === "offline" ? "offline" : "checking"}`} />
-          <span><small>AGENTE PC</small><strong>{health?.agentStatus === "online" ? "Conectado" : health?.agentStatus === "offline" ? "Desconectado" : "Comprobando"}</strong></span>
+          <span><small>AGENTE PC</small><strong>{agentLabel}</strong></span>
         </article>
         <article>
-          <span className={`status-dot ${available ? "online" : unavailable ? "offline" : "checking"}`} />
-          <span><small>IMPRESORA</small><strong>{available ? "Disponible" : unavailable ? "No disponible" : "Comprobando"}</strong></span>
+          <span className={`status-dot ${health?.printerStatus === "available" ? "online" : health?.printerStatus === "unavailable" ? "offline" : "checking"}`} />
+          <span><small>IMPRESORA</small><strong>{printerLabel}</strong></span>
         </article>
       </div>
 

@@ -1,23 +1,27 @@
 import type { User } from "firebase/auth";
 import type { PaperRollView, PrinterHealthView } from "@printdesk/shared-models";
-import type { CreationMode, RecentTicket } from "@/lib/web-types";
+import type { CreationMode, RecentTicket, TicketDraft } from "@/lib/web-types";
+import { ComposeView } from "./compose-view";
 import { UiIcon } from "./ui-icon";
 import { SimpleTicketComposer } from "./simple-ticket-composer";
 
 interface HomeViewProps {
   recentTickets: RecentTicket[];
   user: User | null;
-  onCompose: () => void;
   onHistory: () => void;
   onPrinter: () => void;
   onAiPrint: (text: string) => void;
   onAiReview: (text: string) => void;
   onModeChange: (mode: CreationMode) => void;
+  onSubmit: (draft: TicketDraft) => void;
   health: PrinterHealthView | null;
   paperRoll: PaperRollView | null;
   mode: CreationMode;
   aiBusy: boolean;
   aiError: string | null;
+  composeBusy: boolean;
+  composeError: string | null;
+  composeInitialDraft: TicketDraft | null;
 }
 
 const statusLabel: Record<RecentTicket["status"], string> = {
@@ -38,17 +42,20 @@ function formatTime(value: string) {
 export function HomeView({
   recentTickets,
   user,
-  onCompose,
   onHistory,
   onPrinter,
   onAiPrint,
   onAiReview,
   onModeChange,
+  onSubmit,
   health,
   paperRoll,
   mode,
   aiBusy,
   aiError,
+  composeBusy,
+  composeError,
+  composeInitialDraft,
 }: HomeViewProps) {
   const firstName = user?.displayName?.split(" ")[0] ?? "Dani";
   const pending = recentTickets.filter((ticket) => !["printed", "printed_simulated", "failed"].includes(ticket.status)).length;
@@ -70,30 +77,36 @@ export function HomeView({
   const printerDotClass = `status-dot ${health?.printerStatus === "available" ? "online" : health?.printerStatus === "unavailable" ? "offline" : "checking"}`;
   return (
     <section className="view home-view">
-      <header className="view-header">
-        <p className="kicker">INICIO</p>
-        <h1>Hola, {firstName}.</h1>
-        <p><span className="desktop-only-copy">Aquí tienes el estado general de PrintDesk.</span><span className="mobile-only-copy">Todo listo.</span></p>
-      </header>
+      <div className="home-heading-row">
+        <header className="view-header">
+          <p className="kicker">INICIO</p>
+          <h1>Hola, {firstName}.</h1>
+          <p>¿Qué tienes hoy en mente?</p>
+        </header>
 
-      <div className="creation-mode-switch" role="group" aria-label="Modo de creación">
-        <button aria-pressed={mode === "simple"} className={mode === "simple" ? "active" : ""} onClick={() => onModeChange("simple")} type="button">
-          <UiIcon name="sparkles" size={16} />Modo sencillo
-        </button>
-        <button aria-pressed={mode === "advanced"} className={mode === "advanced" ? "active" : ""} onClick={() => onModeChange("advanced")} type="button">
-          <UiIcon name="settings" size={16} />Modo avanzado
-        </button>
+        <div className="creation-mode-switch" role="group" aria-label="Modo de creación">
+          <button aria-pressed={mode === "simple"} className={mode === "simple" ? "active" : ""} onClick={() => onModeChange("simple")} type="button">
+            <UiIcon name="sparkles" size={16} />Modo sencillo
+          </button>
+          <button aria-pressed={mode === "advanced"} className={mode === "advanced" ? "active" : ""} onClick={() => onModeChange("advanced")} type="button">
+            <UiIcon name="settings" size={16} />Modo avanzado
+          </button>
+        </div>
       </div>
 
-      {mode === "simple" ? (
-        <SimpleTicketComposer busy={aiBusy} error={aiError} onAdvanced={onCompose} onPrint={onAiPrint} onReview={onAiReview} />
-      ) : (
-        <button className="create-ticket-card" onClick={onCompose} type="button">
-          <span className="create-icon"><UiIcon name="plus" size={26} /></span>
-          <span><strong>Crear ticket manualmente</strong><small>Control completo de todos los campos</small></span>
-          <UiIcon name="arrow" size={21} />
-        </button>
-      )}
+      <div className="creation-mode-content" hidden={mode !== "simple"}>
+        <SimpleTicketComposer busy={aiBusy} error={aiError} onPrint={onAiPrint} onReview={onAiReview} />
+      </div>
+      <div className="creation-mode-content" hidden={mode !== "advanced"}>
+        <ComposeView
+          busy={composeBusy}
+          creatorName={firstName}
+          error={composeError}
+          initialDraft={composeInitialDraft}
+          key={composeInitialDraft ? JSON.stringify(composeInitialDraft) : "manual"}
+          onSubmit={onSubmit}
+        />
+      </div>
 
       <div className="mobile-quick-status">
         <p className="micro-label">ESTADO RÁPIDO</p>

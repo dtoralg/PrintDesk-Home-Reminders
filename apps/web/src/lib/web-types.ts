@@ -1,6 +1,6 @@
 import type { NotionSyncView, PrintJobView, RequestInput } from "@printdesk/shared-models";
 
-export type AppSection = "home" | "compose" | "history" | "printer" | "settings";
+export type AppSection = "home" | "history" | "printer" | "settings";
 export type CreationMode = "simple" | "advanced";
 
 export interface TicketDraft extends RequestInput {

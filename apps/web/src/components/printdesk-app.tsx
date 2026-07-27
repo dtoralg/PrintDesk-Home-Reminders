@@ -15,7 +15,6 @@ import type {
 import { firebaseAuth, firebaseConfigured, googleProvider, preserveFirebaseSession } from "@/lib/firebase";
 import type { ActiveTicket, AppSection, CreationMode, RecentTicket, TicketDraft } from "@/lib/web-types";
 import { AppShell } from "./app-shell";
-import { ComposeView } from "./compose-view";
 import { HistoryView } from "./history-view";
 import { HomeView } from "./home-view";
 import { InterpretationProgressView } from "./interpretation-progress-view";
@@ -55,6 +54,23 @@ function dueLocal(value: string | null) {
   }).formatToParts(new Date(value));
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
   return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function newerPrinterCheck(current: PrinterCheckView | null, next: PrinterCheckView) {
+  if (!current || current.checkId !== next.checkId) return next;
+  return Date.parse(next.updatedAt) >= Date.parse(current.updatedAt) ? next : current;
+}
+
+function newerPrinterHealth(current: PrinterHealthView | null, next: PrinterHealthView) {
+  if (!current) return next;
+  return Date.parse(next.updatedAt) >= Date.parse(current.updatedAt) ? next : current;
+}
+
+function scrollContentToTop() {
+  window.requestAnimationFrame(() => {
+    document.querySelector<HTMLElement>(".app-content")?.scrollTo({ left: 0, top: 0 });
+    window.scrollTo({ left: 0, top: 0 });
+  });
 }
 
 export function PrintDeskApp() {
@@ -126,10 +142,12 @@ export function PrintDeskApp() {
         localStorage.setItem(historyKey, JSON.stringify(next));
       }
       if (checkResponse?.status === 200) {
-        setPrinterCheck(await checkResponse.json() as PrinterCheckView);
+        const nextCheck = await checkResponse.json() as PrinterCheckView;
+        setPrinterCheck((current) => newerPrinterCheck(current, nextCheck));
       }
       if (healthResponse?.status === 200) {
-        setPrinterHealth(await healthResponse.json() as PrinterHealthView);
+        const nextHealth = await healthResponse.json() as PrinterHealthView;
+        setPrinterHealth((current) => newerPrinterHealth(current, nextHealth));
       }
       if (paperRollResponse?.status === 200) {
         setPaperRoll(await paperRollResponse.json() as PaperRollView);
@@ -149,17 +167,8 @@ export function PrintDeskApp() {
           signal: controller.signal,
         }).catch(() => null);
         if (automaticResponse?.ok) {
-          setPrinterCheck(await automaticResponse.json() as PrinterCheckView);
-          setPrinterHealth((current) => ({
-            printerId: "home",
-            agentStatus: "checking",
-            printerStatus: "checking",
-            source: "startup_check",
-            error: null,
-            lastAgentSeenAt: current?.lastAgentSeenAt ?? null,
-            lastPrinterSeenAt: current?.lastPrinterSeenAt ?? null,
-            updatedAt: new Date().toISOString(),
-          }));
+          const nextCheck = await automaticResponse.json() as PrinterCheckView;
+          setPrinterCheck((current) => newerPrinterCheck(current, nextCheck));
         } else {
           setPrinterCheckBusy(false);
           setPrinterCheckError(`No se pudo iniciar la comprobación automática${automaticResponse ? ` (${automaticResponse.status})` : ""}.`);
@@ -197,7 +206,10 @@ export function PrintDeskApp() {
       setActiveTicket((current) => current
         ? { ...current, job: state.job, notion: state.notion ?? pendingNotionSync }
         : current);
-      if (healthResponse?.ok) setPrinterHealth(await healthResponse.json() as PrinterHealthView);
+      if (healthResponse?.ok) {
+        const nextHealth = await healthResponse.json() as PrinterHealthView;
+        setPrinterHealth((current) => newerPrinterHealth(current, nextHealth));
+      }
       if (paperRollResponse?.ok) setPaperRoll(await paperRollResponse.json() as PaperRollView);
     }, 1500);
     return () => {
@@ -218,25 +230,39 @@ export function PrintDeskApp() {
   useEffect(() => {
     if (!printerCheck || !["pending", "checking"].includes(printerCheck.status)) return;
     const controller = new AbortController();
+    let polling = false;
     const poll = async () => {
-      const token = user ? await user.getIdToken() : null;
-      const response = await fetch(`${apiBase}/v1/printer-checks/${printerCheck.checkId}`, {
-        headers: token ? { authorization: `Bearer ${token}` } : {},
-        signal: controller.signal,
-      }).catch(() => null);
-      if (!response?.ok) return;
-      const next = await response.json() as PrinterCheckView;
-      setPrinterCheck(next);
-      const healthResponse = await fetch(`${apiBase}/v1/printers/home/health`, {
-        headers: token ? { authorization: `Bearer ${token}` } : {},
-        signal: controller.signal,
-      }).catch(() => null);
-      if (healthResponse?.ok) setPrinterHealth(await healthResponse.json() as PrinterHealthView);
-      if (["available", "unavailable"].includes(next.status)) {
-        setPrinterCheckBusy(false);
-        setPrinterCheckError(null);
+      if (polling) return;
+      polling = true;
+      try {
+        const token = user ? await user.getIdToken() : null;
+        const headers = token ? { authorization: `Bearer ${token}` } : {};
+        const response = await fetch(`${apiBase}/v1/printer-checks/${printerCheck.checkId}`, {
+          headers,
+          signal: controller.signal,
+        }).catch(() => null);
+        if (!response?.ok) return;
+        const next = await response.json() as PrinterCheckView;
+        setPrinterCheck((current) => newerPrinterCheck(current, next));
+        const healthResponse = await fetch(`${apiBase}/v1/printers/home/health`, {
+          headers,
+          signal: controller.signal,
+        }).catch(() => null);
+        if (healthResponse?.ok) {
+          const nextHealth = await healthResponse.json() as PrinterHealthView;
+          setPrinterHealth((current) => newerPrinterHealth(current, nextHealth));
+        }
+        if (["available", "unavailable"].includes(next.status)) {
+          setPrinterCheckBusy(false);
+          setPrinterCheckError(next.status === "unavailable"
+            ? next.error ?? "La impresora no ha respondido a la prueba TCP."
+            : null);
+        }
+      } finally {
+        polling = false;
       }
     };
+    void poll();
     const interval = window.setInterval(() => void poll(), 1_500);
     const timeout = window.setTimeout(async () => {
       const token = user ? await user.getIdToken() : null;
@@ -244,14 +270,29 @@ export function PrintDeskApp() {
       const timeoutResponse = await fetch(`${apiBase}/v1/printer-checks/${printerCheck.checkId}/timeout`, {
         method: "POST",
         headers,
+        signal: controller.signal,
       }).catch(() => null);
-      if (timeoutResponse?.ok) setPrinterCheck(await timeoutResponse.json() as PrinterCheckView);
-      const healthResponse = await fetch(`${apiBase}/v1/printers/home/health`, { headers }).catch(() => null);
-      if (healthResponse?.ok) setPrinterHealth(await healthResponse.json() as PrinterHealthView);
+      if (controller.signal.aborted) return;
+      const timedCheck = timeoutResponse?.ok
+        ? await timeoutResponse.json() as PrinterCheckView
+        : null;
+      if (timedCheck) setPrinterCheck((current) => newerPrinterCheck(current, timedCheck));
+      const healthResponse = await fetch(`${apiBase}/v1/printers/home/health`, {
+        headers,
+        signal: controller.signal,
+      }).catch(() => null);
+      if (controller.signal.aborted) return;
+      if (healthResponse?.ok) {
+        const nextHealth = await healthResponse.json() as PrinterHealthView;
+        setPrinterHealth((current) => newerPrinterHealth(current, nextHealth));
+      }
       setPrinterCheckBusy(false);
-      setPrinterCheckError(printerCheck.status === "checking"
-        ? "El agente respondió, pero la impresora no completó la prueba TCP."
-        : "El agente no ha respondido. Comprueba que el PC esté encendido.");
+      setPrinterCheckError(timedCheck?.status === "available"
+        ? null
+        : timedCheck?.error
+          ?? (timedCheck?.status === "checking"
+            ? "El agente respondió, pero la impresora no completó la prueba TCP."
+            : "El agente no ha respondido. Comprueba que el PC esté encendido."));
     }, 20_000);
     return () => {
       controller.abort();
@@ -371,11 +412,14 @@ export function PrintDeskApp() {
   async function reviewWithAi(text: string) {
     setAiBusy(true);
     setAiError(null);
+    setError(null);
     try {
       const draft = await interpretTicket(text);
       setComposeInitialDraft(draft);
-      setSection("compose");
-      window.scrollTo({ left: 0, top: 0 });
+      setCreationMode("advanced");
+      localStorage.setItem(creationModeKey, "advanced");
+      setSection("home");
+      scrollContentToTop();
     } catch (cause) {
       setAiError(cause instanceof Error ? cause.message : "No se pudo interpretar el ticket.");
     } finally {
@@ -404,7 +448,8 @@ export function PrintDeskApp() {
         body: JSON.stringify({ source: "manual_check" }),
       });
       if (!response.ok) throw new Error(`No se pudo iniciar la comprobación (${response.status}).`);
-      setPrinterCheck(await response.json() as PrinterCheckView);
+      const nextCheck = await response.json() as PrinterCheckView;
+      setPrinterCheck((current) => newerPrinterCheck(current, nextCheck));
     } catch (cause) {
       setPrinterCheckBusy(false);
       setPrinterCheckError(cause instanceof Error ? cause.message : "No se pudo comprobar la impresora.");
@@ -440,9 +485,21 @@ export function PrintDeskApp() {
     setActiveTicket(null);
     setAiProgress(false);
     setAiProgressError(null);
-    if (nextSection !== "compose") setComposeInitialDraft(null);
+    setComposeInitialDraft(null);
     setSection(nextSection);
-    window.scrollTo({ left: 0, top: 0 });
+    scrollContentToTop();
+  }
+
+  function openAdvanced(initialDraft: TicketDraft | null = null) {
+    setError(null);
+    setActiveTicket(null);
+    setAiProgress(false);
+    setAiProgressError(null);
+    setComposeInitialDraft(initialDraft);
+    setCreationMode("advanced");
+    localStorage.setItem(creationModeKey, "advanced");
+    setSection("home");
+    scrollContentToTop();
   }
 
   if (!authReady || (firebaseConfigured && !user)) {
@@ -454,7 +511,7 @@ export function PrintDeskApp() {
   }
 
   if (activeTicket && ["printed", "printed_simulated"].includes(activeTicket.job.status)) {
-    return <ResultView onCreateAnother={() => navigate("compose")} onFinish={() => navigate("home")} ticket={activeTicket} user={user} />;
+    return <ResultView onCreateAnother={() => openAdvanced()} onFinish={() => navigate("home")} ticket={activeTicket} user={user} />;
   }
 
   if (activeTicket?.job.status === "queued" && showQueuedResult) {
@@ -462,19 +519,15 @@ export function PrintDeskApp() {
   }
 
   if (activeTicket) {
-    return <ProgressView onCancel={() => navigate(activeTicket.job.status === "failed" ? "compose" : "home")} ticket={activeTicket} />;
+    return <ProgressView onCancel={() => activeTicket.job.status === "failed" ? openAdvanced(activeTicket.draft) : navigate("home")} ticket={activeTicket} />;
   }
 
   const pendingCount = recentTickets.filter((ticket) => !["printed", "printed_simulated", "failed"].includes(ticket.status)).length;
 
   return (
     <AppShell active={section} health={printerHealth} onNavigate={navigate} pendingCount={pendingCount} user={user}>
-      {section === "home" && <HomeView aiBusy={aiBusy} aiError={aiError} health={printerHealth} mode={creationMode} onAiPrint={(text) => void printWithAi(text)} onAiReview={(text) => void reviewWithAi(text)} onCompose={() => {
-        setComposeInitialDraft(null);
-        navigate("compose");
-      }} onHistory={() => navigate("history")} onModeChange={changeCreationMode} onPrinter={() => navigate("printer")} paperRoll={paperRoll} recentTickets={recentTickets} user={user} />}
-      {section === "compose" && <ComposeView busy={submitBusy} creatorName={user?.displayName?.split(" ")[0] ?? "Tú"} error={error} initialDraft={composeInitialDraft} onBack={() => navigate("home")} onSubmit={(draft) => void submit(draft)} />}
-      {section === "history" && <HistoryView onCompose={() => navigate("compose")} tickets={recentTickets} />}
+      {section === "home" && <HomeView aiBusy={aiBusy} aiError={aiError} composeBusy={submitBusy} composeError={error} composeInitialDraft={composeInitialDraft} health={printerHealth} mode={creationMode} onAiPrint={(text) => void printWithAi(text)} onAiReview={(text) => void reviewWithAi(text)} onHistory={() => navigate("history")} onModeChange={changeCreationMode} onPrinter={() => navigate("printer")} onSubmit={(draft) => void submit(draft)} paperRoll={paperRoll} recentTickets={recentTickets} user={user} />}
+      {section === "history" && <HistoryView onCompose={() => openAdvanced()} tickets={recentTickets} />}
       {section === "printer" && <PrinterView check={printerCheck} checking={printerCheckBusy} error={printerCheckError} health={printerHealth} onCheck={() => void checkPrinter()} />}
       {section === "settings" && <SettingsView onReplacePaperRoll={replacePaperRoll} onSignOut={() => void signOut(firebaseAuth())} paperRoll={paperRoll} paperRollBusy={paperRollBusy} paperRollError={paperRollError} user={user} />}
     </AppShell>

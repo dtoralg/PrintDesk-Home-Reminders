@@ -10,7 +10,7 @@ describe("VertexTicketInterpreter", () => {
             text: JSON.stringify({
               type: "reminder",
               title: "Comprar leche",
-              body: "Comprar leche al salir del trabajo.",
+              body: "Recordatorio para comprar leche.",
               important: false,
               dueAt: "2026-07-28T12:00:00+02:00",
             }),
@@ -34,6 +34,8 @@ describe("VertexTicketInterpreter", () => {
     const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
     expect(init.headers).toMatchObject({ authorization: "Bearer token" });
     expect(String(init.body)).toContain("Europe/Madrid");
+    expect(String(init.body)).toContain("No puedes añadir hechos");
+    expect(String(init.body)).toContain("Ejemplo prohibido");
   });
 
   it("rechaza una salida que no cumple el contrato del ticket", async () => {

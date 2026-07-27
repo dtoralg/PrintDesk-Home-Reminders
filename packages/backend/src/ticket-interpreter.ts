@@ -17,8 +17,11 @@ const responseSchema = {
       enum: ["task", "idea", "reminder", "note"],
       description: "task para acciones, idea para ideas, reminder para avisos con fecha y note para información.",
     },
-    title: { type: "STRING", description: "Título de entre 1 y 120 caracteres." },
-    body: { type: "STRING", description: "Descripción de hasta 2000 caracteres." },
+    title: { type: "STRING", description: "Título claro y accionable, normalmente de 3 a 8 palabras." },
+    body: {
+      type: "STRING",
+      description: "Resumen natural de 1 a 3 frases construido exclusivamente con información presente en el mensaje.",
+    },
     important: { type: "BOOLEAN" },
     dueAt: {
       type: "STRING",
@@ -31,10 +34,15 @@ const responseSchema = {
 
 function instructions(now: string, timeZone: string) {
   return [
-    "Convierte el mensaje en un ticket doméstico de PrintDesk.",
-    "No inventes nombres, fechas, lugares ni detalles que el usuario no haya dado.",
-    "El título debe ser breve, claro, accionable y estar en el idioma del usuario.",
-    "El cuerpo conserva los detalles útiles sin repetir el título.",
+    "Eres el editor de tickets domésticos de PrintDesk. Convierte mensajes informales o telegráficos en tickets claros y fáciles de leer.",
+    "Puedes mejorar la redacción: ordenar ideas, eliminar muletillas, resolver abreviaturas evidentes, convertir fragmentos en frases naturales y separar el objetivo de sus detalles.",
+    "No puedes añadir hechos. No inventes personas, motivos, lugares, cantidades, productos, fechas, horas, condiciones ni pasos que no estén expresos o inequívocamente implícitos en el mensaje.",
+    "El título debe expresar la acción o idea principal en 3 a 8 palabras, sin copiar innecesariamente todo el mensaje.",
+    "El cuerpo debe aportar legibilidad en 1 a 3 frases breves usando solo la información disponible. Conserva propósito, contexto, restricciones y acciones secundarias que sí aparezcan.",
+    "Si el mensaje solo contiene una acción breve, redacta una descripción mínima y natural sin introducir datos nuevos. No dejes el cuerpo vacío y no copies literalmente el título.",
+    "Ejemplo válido: «comprar leche mañana» → título «Comprar leche»; cuerpo «Recordatorio para comprar leche.»; fecha de mañana.",
+    "Ejemplo válido: «llamar a Sanitas por cobertura dental y pedir presupuesto» → título «Consultar cobertura dental»; cuerpo «Llamar a Sanitas para preguntar por la cobertura dental y solicitar un presupuesto.»",
+    "Ejemplo prohibido: no añadas «al salir del trabajo», una tienda, una cantidad de leche o un motivo si el usuario no lo mencionó.",
     "Marca important=true solo si hay urgencia, prioridad o importancia explícita.",
     "Usa reminder si el propósito principal es recordar algo con fecha; task para una acción; idea para una idea; note para información.",
     "Si no existe ninguna fecha explícita o relativa, dueAt debe ser null.",
@@ -79,7 +87,7 @@ export class VertexTicketInterpreter implements TicketInterpreter {
         },
         contents: [{ role: "user", parts: [{ text }] }],
         generationConfig: {
-          temperature: 0.1,
+          temperature: 0.2,
           maxOutputTokens: 500,
           responseMimeType: "application/json",
           responseSchema,

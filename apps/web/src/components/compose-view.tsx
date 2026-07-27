@@ -10,7 +10,6 @@ interface ComposeViewProps {
   busy: boolean;
   creatorName: string;
   error: string | null;
-  onBack: () => void;
   onSubmit: (draft: TicketDraft) => void;
   initialDraft?: TicketDraft | null;
 }
@@ -31,7 +30,7 @@ const emptyDraft: TicketDraft = {
     dueLocal: "",
 };
 
-export function ComposeView({ busy, creatorName, error, initialDraft, onBack, onSubmit }: ComposeViewProps) {
+export function ComposeView({ busy, creatorName, error, initialDraft, onSubmit }: ComposeViewProps) {
   const [draft, setDraft] = useState<TicketDraft>(initialDraft ?? emptyDraft);
 
   function update(values: Partial<TicketDraft>) {
@@ -49,13 +48,7 @@ export function ComposeView({ busy, creatorName, error, initialDraft, onBack, on
   }
 
   return (
-    <section className="view compose-view">
-      <header className="compose-header">
-        <button className="icon-button" onClick={onBack} type="button" aria-label="Volver">←</button>
-        <div><p className="kicker">NUEVA SOLICITUD</p><h1>Nuevo ticket</h1></div>
-        <span className="mode-badge">{draft.interpretedByAi ? "REVISIÓN IA" : "MODO AVANZADO"}</span>
-      </header>
-
+    <section className="compose-view" aria-label={draft.interpretedByAi ? "Revisar ticket interpretado" : "Crear ticket manualmente"}>
       <div className="compose-grid">
         <form className="ticket-form" onSubmit={submit}>
           <fieldset>

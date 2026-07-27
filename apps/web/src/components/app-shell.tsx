@@ -14,7 +14,6 @@ interface AppShellProps {
 
 const navigation = [
   ["home", "home", "Inicio"],
-  ["compose", "plus", "Nueva solicitud"],
   ["history", "history", "Historial"],
   ["printer", "printer", "Impresora"],
   ["settings", "settings", "Ajustes"],
@@ -80,7 +79,7 @@ export function AppShell({ active, children, pendingCount, health, user, onNavig
       <main className="app-content">{children}</main>
 
       <nav aria-label="Navegación móvil" className="mobile-nav">
-        {navigation.filter(([section]) => section !== "compose").map(([section, icon, label]) => (
+        {navigation.map(([section, icon, label]) => (
           <button className={active === section ? "active" : ""} key={section} onClick={() => onNavigate(section)} type="button">
             <UiIcon name={icon} size={20} /><span>{label}</span>
           </button>
