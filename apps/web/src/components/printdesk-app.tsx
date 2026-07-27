@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
 import type {
   CreateRequestResult,
+  NotionSyncView,
   PrinterCheckView,
   RequestHistoryResult,
   RequestStateResult,
@@ -23,6 +24,12 @@ import { SettingsView } from "./settings-view";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 const historyKey = "printdesk.recent-tickets.v1";
+const pendingNotionSync: NotionSyncView = {
+  status: "pending",
+  url: null,
+  error: null,
+  updatedAt: null,
+};
 
 function readRecentTickets() {
   try {
@@ -107,7 +114,9 @@ export function PrintDeskApp() {
       }).catch(() => null);
       if (!response?.ok) return;
       const state = await response.json() as RequestStateResult;
-      setActiveTicket((current) => current ? { ...current, job: state.job, notion: state.notion } : current);
+      setActiveTicket((current) => current
+        ? { ...current, job: state.job, notion: state.notion ?? pendingNotionSync }
+        : current);
     }, 1500);
     return () => {
       controller.abort();
@@ -209,7 +218,9 @@ export function PrintDeskApp() {
         shortUrl: result.shortUrl,
         draft,
         job: result.job,
-        notion: result.notion,
+        // Keep the web compatible with an older API revision while Cloud Run
+        // rolls services independently.
+        notion: result.notion ?? pendingNotionSync,
       });
       idempotencyKey.current = null;
     } catch (cause) {

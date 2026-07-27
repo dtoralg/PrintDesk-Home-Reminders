@@ -31,6 +31,10 @@ export async function startVirtualPrinter(spoolDirectory: string, port = 0): Pro
     socket.on("end", async () => {
       try {
         const bytes = Buffer.concat(chunks);
+        // A TCP availability probe connects and closes without sending data.
+        // Real printers accept that probe, so the dry-run printer must not
+        // attempt to parse it as an ESC/POS ticket.
+        if (bytes.length === 0) return;
         const inspection = inspectEscPos(bytes);
         sequence += 1;
         const path = join(directory, `ticket-${String(sequence).padStart(4, "0")}.escpos`);

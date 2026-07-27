@@ -47,6 +47,7 @@ describe("ESC/POS dry printing", () => {
     printers.push(virtual);
     const bytes = ticket();
 
+    await new Tcp9100Printer({ host: virtual.host, port: virtual.port }).probe();
     await new Tcp9100Printer({ host: virtual.host, port: virtual.port }).send(bytes);
     const capture = await virtual.waitForCapture();
 
