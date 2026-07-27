@@ -13,7 +13,7 @@ import type {
   PrintDeskRepository,
 } from "./ports.js";
 import { InlineEventPublisher, RenderWorker } from "./render-worker.js";
-import { HttpNotionPageWriter } from "./notion-adapter.js";
+import { HttpNotionPageWriter, parseNotionResponsibleUserMap } from "./notion-adapter.js";
 import { NotionWorker } from "./notion-worker.js";
 
 export interface BackendDependencies {
@@ -66,9 +66,12 @@ export function createRenderDependencies() {
 export function createNotionDependencies() {
   const projectId = required("GOOGLE_CLOUD_PROJECT");
   const repository = new FirestoreRepository(projectId, process.env.PRINTDESK_FIRESTORE_DATABASE ?? "(default)");
-  const pages = new HttpNotionPageWriter(
-    required("PRINTDESK_NOTION_TOKEN"),
-    required("PRINTDESK_NOTION_PARENT_PAGE_ID"),
-  );
+  const pages = new HttpNotionPageWriter({
+    token: required("PRINTDESK_NOTION_TOKEN"),
+    dataSourceId: required("PRINTDESK_NOTION_DATA_SOURCE_ID"),
+    projectPageId: required("PRINTDESK_NOTION_PROJECT_PAGE_ID"),
+    defaultResponsibleUserId: required("PRINTDESK_NOTION_DEFAULT_RESPONSIBLE_USER_ID"),
+    responsibleUserMap: parseNotionResponsibleUserMap(process.env.PRINTDESK_NOTION_RESPONSIBLE_USER_MAP),
+  });
   return { repository, pages, worker: new NotionWorker(repository, pages) };
 }

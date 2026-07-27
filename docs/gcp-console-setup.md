@@ -101,7 +101,7 @@ Créala sin claves y concede:
 - **Cloud Datastore User** (`roles/datastore.user`), para leer solicitudes y
   guardar el estado de la sincronización en Firestore.
 - **Secret Manager Secret Accessor** (`roles/secretmanager.secretAccessor`)
-  únicamente sobre los dos secretos de Notion descritos en el paso 10.
+  únicamente sobre `printdesk-notion-token`, descrito en el paso 10.
 
 ### `printdesk-pubsub-push`
 
@@ -205,15 +205,38 @@ le concediste el rol a nivel de proyecto no añadas otra concesión duplicada.
 Esta integración es independiente del renderer: un fallo de Notion nunca
 bloquea la impresión.
 
-1. En Notion, crea una integración interna con capacidad **Insert content**.
-2. Crea una página padre llamada `PrintDesk`, conéctala a la integración y copia
-   tanto el token de la integración como el ID de la página.
-3. En **Secret Manager > Crear secreto**, crea:
-   - `printdesk-notion-token`, con el token como valor.
-   - `printdesk-notion-parent-page-id`, con el ID de la página como valor.
-4. En cada secreto, abre **Permisos** y concede **Secret Manager Secret
+1. En Notion, crea una integración interna con capacidades **Read content** e
+   **Insert content**. No necesita leer información de usuarios porque los IDs
+   de responsables se configuran de forma explícita.
+2. En `Torospace`, conecta la integración tanto a **Tasks Manager** como a la
+   fuente relacionada **Project**. La relación `Project` no puede escribirse si
+   la integración no tiene acceso a ambas fuentes.
+3. Estos son los identificadores actuales de Torospace; no son secretos:
+
+   ```text
+   Tasks Manager data source: 11e8fbfd-5551-817d-b66f-000b6db26176
+   Proyecto PrintDesk page:    3aa8fbfd-5551-8055-9787-e5ae9dc76364
+   Responsable Daniel T:       fffd872b-594c-814b-882e-000283c18ed9
+   ```
+
+4. En **Secret Manager > Crear secreto**, crea `printdesk-notion-token` con el
+   token de la integración como valor.
+5. Abre el secreto, entra en **Permisos** y concede **Secret Manager Secret
    Accessor** a `printdesk-notion`.
-5. Crea el trigger segmentado que usa `cloudbuild.notion.yaml`. Sus archivos
+6. El worker valida el esquema real antes de escribir. El mapeo es:
+
+   | PrintDesk | Tasks Manager |
+   | --- | --- |
+   | Título | `Name` |
+   | Fecha opcional | `Due Date ` |
+   | Estado fijo | `Status = To-Do` |
+   | Prioridad fija | `Priority  = Medium Priority` |
+   | Proyecto | `Project  = PrintDesk` |
+   | Creador | `Responsable` |
+
+   `Complete ` es una fórmula de solo lectura: no se envía a la API y Notion
+   calcula automáticamente el 0 % a partir del estado `To-Do`.
+7. Crea el trigger segmentado que usa `cloudbuild.notion.yaml`. Sus archivos
    incluidos son:
 
    ```text
@@ -228,23 +251,34 @@ bloquea la impresión.
    .dockerignore
    ```
 
-6. Cuando Artifact Registry contenga `printdesk-notion`, crea el servicio
+8. Cuando Artifact Registry contenga `printdesk-notion`, crea el servicio
    privado de Cloud Run `printdesk-notion` en `europe-southwest1`, puerto 8080,
    con la cuenta `printdesk-notion`.
-7. En la revisión del servicio configura:
+9. En la revisión del servicio configura:
 
    ```text
    GOOGLE_CLOUD_PROJECT=<PROJECT_ID>
    PRINTDESK_FIRESTORE_DATABASE=(default)
-   PRINTDESK_NOTION_TOKEN=<secreto printdesk-notion-token:latest>
-   PRINTDESK_NOTION_PARENT_PAGE_ID=<secreto printdesk-notion-parent-page-id:latest>
+   PRINTDESK_NOTION_TOKEN=<secreto printdesk-notion-token:1>
+   PRINTDESK_NOTION_DATA_SOURCE_ID=11e8fbfd-5551-817d-b66f-000b6db26176
+   PRINTDESK_NOTION_PROJECT_PAGE_ID=3aa8fbfd-5551-8055-9787-e5ae9dc76364
+   PRINTDESK_NOTION_DEFAULT_RESPONSIBLE_USER_ID=fffd872b-594c-814b-882e-000283c18ed9
    ```
 
-   Para los dos últimos valores usa **Reference a secret**, no pegues los
-   secretos como texto.
-8. En **Permisos** del servicio concede **Cloud Run Invoker** a
+   Solo `PRINTDESK_NOTION_TOKEN` usa **Reference a secret**. Los IDs restantes
+   son variables normales.
+
+   Si se autorizan más usuarios, añade opcionalmente un mapa por UID de
+   Firebase o correo. El valor debe ser JSON en una sola línea:
+
+   ```text
+   PRINTDESK_NOTION_RESPONSIBLE_USER_MAP={"<firebase-uid>":"<notion-user-id>","persona@example.com":"<notion-user-id>"}
+   ```
+
+   El mapa tiene prioridad sobre el responsable predeterminado.
+10. En **Permisos** del servicio concede **Cloud Run Invoker** a
    `printdesk-pubsub-push`.
-9. Crea una segunda suscripción push sobre el topic `request-created`:
+11. Crea una segunda suscripción push sobre el topic `request-created`:
    - ID: `notion-request-created`.
    - Endpoint: `<URL_NOTION>/events/request-created`.
    - Autenticación: `printdesk-pubsub-push`.
@@ -252,9 +286,11 @@ bloquea la impresión.
    - Ack deadline: 60 segundos.
    - Reintentos: 10–600 segundos.
    - Dead-letter topic: `request-created-dead-letter`, máximo 5 intentos.
-10. Tras la primera solicitud, Firestore creará `notion_syncs/{requestId}`.
+12. Tras la primera solicitud, Firestore creará `notion_syncs/{requestId}`.
     Cuando el estado sea `ready`, `/r/<shortCode>` redirigirá a Notion;
-    `/r/<shortCode>?view=live` siempre mostrará la copia viva de PrintDesk.
+    `/r/<shortCode>?view=live` siempre mostrará la copia viva de PrintDesk. La
+    PWA recibe además la URL directa de la tarea y la utiliza en **Ver en
+    Notion**.
 
 ## Comprobación visual
 

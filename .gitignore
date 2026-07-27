@@ -12,6 +12,7 @@ __pycache__/
 *.log
 *.tsbuildinfo
 .local-data/
+.tmp/
 .codex-remote-attachments/
 firebase-debug.log
 firestore-debug.log

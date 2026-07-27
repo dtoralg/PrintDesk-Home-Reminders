@@ -69,8 +69,8 @@ autenticación de usuario también falla cerrada fuera del modo local.
 
 ## Integraciones posteriores
 
-- El worker de Notion crea una página una sola vez y completa el redirect; no
-  escucha ediciones de Notion.
+- El worker de Notion crea una tarea una sola vez en `Tasks Manager`, conserva
+  su URL y completa el redirect; no escucha ediciones de Notion.
 - El MCP remoto aplica OAuth y scopes mínimos sobre las mismas operaciones.
 - La Custom Skill doméstica usa un adaptador Cloud Run público y aislado que
   verifica las peticiones de Alexa antes de invocar la API con identidad de
