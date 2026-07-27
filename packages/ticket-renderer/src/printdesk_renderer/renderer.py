@@ -14,6 +14,8 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 WIDTH = 576
 MARGIN = 30
 CONTENT_WIDTH = WIDTH - MARGIN * 2
+TOP_ORNAMENT_Y = 9
+HEADER_Y = 34
 MADRID = ZoneInfo("Europe/Madrid")
 FONT_DIR = Path(__file__).resolve().parents[2] / "assets" / "fonts"
 TYPE_LABELS = {
@@ -209,7 +211,7 @@ def render_ticket(payload: dict[str, Any], output_dir: Path) -> tuple[Path, Path
     body_lines = _wrap_pixels(measuring_draw, body, body_font, CONTENT_WIDTH - 20) if body else []
     qr = _qr_image(short_url)
 
-    header_y = 58
+    header_y = HEADER_Y
     header_height = 76
     divider_y = header_y + header_height + 17
     title_y = divider_y + 23
@@ -234,7 +236,7 @@ def render_ticket(payload: dict[str, Any], output_dir: Path) -> tuple[Path, Path
 
     canvas = Image.new("L", (WIDTH, height), 255)
     draw = ImageDraw.Draw(canvas)
-    _top_ornament(draw, 27)
+    _top_ornament(draw, TOP_ORNAMENT_Y)
 
     left = MARGIN
     right = WIDTH - MARGIN

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 from printdesk_renderer import render_ticket  # noqa: E402
@@ -93,6 +93,15 @@ class RendererTest(unittest.TestCase):
             self.assertTrue(data.endswith(b"\x1dV\x00"))
             self.assertEqual(int.from_bytes(data[9:11], "little"), 72)
             self.assertEqual(int.from_bytes(data[11:13], "little"), expected_height)
+
+    def test_starts_content_near_the_printable_top_without_extra_paper(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            preview, _ = render_ticket(payload("Póliza y conexión correctas."), Path(directory))
+            with Image.open(preview) as image:
+                ink_bounds = ImageOps.invert(image.convert("L")).getbbox()
+                self.assertIsNotNone(ink_bounds)
+                assert ink_bounds is not None
+                self.assertLessEqual(ink_bounds[1], 3)
 
 
 if __name__ == "__main__":
