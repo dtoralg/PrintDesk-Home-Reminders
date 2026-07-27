@@ -43,6 +43,11 @@ steps:
       - --region=${_REGION}
       - --project=$PROJECT_ID
       - --platform=managed
+      - --service-account=${_RUNTIME_SERVICE_ACCOUNT}@$PROJECT_ID.iam.gserviceaccount.com
+      - --port=8080
+      - --no-allow-unauthenticated
+      - --update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,PRINTDESK_FIRESTORE_DATABASE=(default),PRINTDESK_NOTION_DATA_SOURCE_ID=${_NOTION_DATA_SOURCE_ID},PRINTDESK_NOTION_PROJECT_PAGE_ID=${_NOTION_PROJECT_PAGE_ID},PRINTDESK_NOTION_DEFAULT_RESPONSIBLE_USER_ID=${_NOTION_DEFAULT_RESPONSIBLE_USER_ID}
+      - --update-secrets=PRINTDESK_NOTION_TOKEN=${_NOTION_TOKEN_SECRET}:${_NOTION_TOKEN_SECRET_VERSION}
       - --quiet
 
   - name: gcr.io/cloud-builders/docker
@@ -56,6 +61,12 @@ substitutions:
   _REGION: europe-southwest1
   _AR_REPOSITORY: printdesk
   _SERVICE_NAME: printdesk-notion
+  _RUNTIME_SERVICE_ACCOUNT: printdesk-notion
+  _NOTION_TOKEN_SECRET: printdesk-notion-token
+  _NOTION_TOKEN_SECRET_VERSION: "1"
+  _NOTION_DATA_SOURCE_ID: 11e8fbfd-5551-817d-b66f-000b6db26176
+  _NOTION_PROJECT_PAGE_ID: 3aa8fbfd-5551-8055-9787-e5ae9dc76364
+  _NOTION_DEFAULT_RESPONSIBLE_USER_ID: fffd872b-594c-814b-882e-000283c18ed9
 
 options:
   logging: CLOUD_LOGGING_ONLY

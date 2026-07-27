@@ -251,10 +251,12 @@ bloquea la impresión.
    .dockerignore
    ```
 
-8. Cuando Artifact Registry contenga `printdesk-notion`, crea el servicio
-   privado de Cloud Run `printdesk-notion` en `europe-southwest1`, puerto 8080,
-   con la cuenta `printdesk-notion`.
-9. En la revisión del servicio configura:
+8. Ejecuta el trigger después de que estos cambios estén en `main`. El pipeline
+   construye `printdesk-notion`, lo publica en Artifact Registry y crea o
+   actualiza automáticamente el servicio privado de Cloud Run
+   `printdesk-notion` en `europe-southwest1`, puerto 8080, con la cuenta
+   `printdesk-notion`.
+9. En la revisión creada, comprueba que el pipeline haya configurado:
 
    ```text
    GOOGLE_CLOUD_PROJECT=<PROJECT_ID>
@@ -265,8 +267,9 @@ bloquea la impresión.
    PRINTDESK_NOTION_DEFAULT_RESPONSIBLE_USER_ID=fffd872b-594c-814b-882e-000283c18ed9
    ```
 
-   Solo `PRINTDESK_NOTION_TOKEN` usa **Reference a secret**. Los IDs restantes
-   son variables normales.
+   Solo `PRINTDESK_NOTION_TOKEN` usa **Reference a secret**, fijada en la
+   versión `1`. Los IDs restantes son variables normales. No hace falta crear
+   manualmente un contenedor o una revisión inicial.
 
    Si se autorizan más usuarios, añade opcionalmente un mapa por UID de
    Firebase o correo. El valor debe ser JSON en una sola línea:
