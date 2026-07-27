@@ -8,6 +8,7 @@ import { UiIcon } from "./ui-icon";
 
 interface ComposeViewProps {
   busy: boolean;
+  creatorName: string;
   error: string | null;
   onBack: () => void;
   onSubmit: (draft: TicketDraft) => void;
@@ -20,7 +21,7 @@ const requestTypes: Array<{ value: RequestType; label: string }> = [
   { value: "note", label: "Nota" },
 ];
 
-export function ComposeView({ busy, error, onBack, onSubmit }: ComposeViewProps) {
+export function ComposeView({ busy, creatorName, error, onBack, onSubmit }: ComposeViewProps) {
   const [draft, setDraft] = useState<TicketDraft>({
     type: "task",
     title: "",
@@ -40,7 +41,7 @@ export function ComposeView({ busy, error, onBack, onSubmit }: ComposeViewProps)
       ...draft,
       title: draft.title.trim(),
       body: draft.body.trim(),
-      dueAt: draft.dueLocal ? new Date(draft.dueLocal).toISOString() : null,
+      dueAt: draft.dueLocal ? new Date(`${draft.dueLocal}T12:00:00`).toISOString() : null,
     });
   }
 
@@ -80,7 +81,7 @@ export function ComposeView({ busy, error, onBack, onSubmit }: ComposeViewProps)
             <label className="date-field" htmlFor="ticket-date">
               <UiIcon name="calendar" size={18} />
               <span>Fecha (opcional)</span>
-              <input id="ticket-date" onChange={(event) => update({ dueLocal: event.target.value })} type="datetime-local" value={draft.dueLocal} />
+              <input id="ticket-date" onChange={(event) => update({ dueLocal: event.target.value })} type="date" value={draft.dueLocal} />
             </label>
           </div>
 
@@ -93,7 +94,7 @@ export function ComposeView({ busy, error, onBack, onSubmit }: ComposeViewProps)
 
         <aside className="preview-column">
           <p className="micro-label">VISTA PREVIA DEL TICKET</p>
-          <TicketPreview draft={draft} />
+          <TicketPreview creatorName={creatorName} draft={draft} />
         </aside>
       </div>
     </section>
