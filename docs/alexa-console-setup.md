@@ -142,12 +142,12 @@ Cuando Cloud Run termine:
    https://<URL-DE-PRINTDESK-ALEXA>/integrations/alexa
    ```
 
-5. Certificado: **My development endpoint has a certificate from a trusted
-   certificate authority**.
+5. Certificado: **My development endpoint is a sub-domain of a domain that has
+   a wildcard certificate from a certificate authority**.
 6. Guarda y vuelve a construir la skill.
 
-Cloud Run ya proporciona HTTPS con un certificado público válido; no hace
-falta generar ni subir certificados.
+Cloud Run ya proporciona HTTPS con un certificado wildcard público válido
+emitido por Google Trust Services; no hace falta generar ni subir certificados.
 
 ## 7. Obtener y cerrar las allowlists
 

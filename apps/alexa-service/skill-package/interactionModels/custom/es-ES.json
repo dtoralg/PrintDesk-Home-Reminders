@@ -13,6 +13,10 @@
           ],
           "samples": [
             "imprime {text}",
+            "imprima {text}",
+            "que imprima {text}",
+            "quiero que imprima {text}",
+            "manda imprimir {text}",
             "imprime que {text}",
             "crea un ticket para {text}",
             "apunta que {text}",
